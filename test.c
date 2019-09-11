@@ -1,71 +1,89 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct
 {
     char *protocol;
-    char *site;
-    char *port;
+    char *host;
+    int port;
     char *path;
-} URL_INFO;
+} url_info;
 
-
-void *split_url(URL_INFO *info, const char *url)
+int count_sub_string(const char *a, const char *b)
 {
-    if (!info || !url)
-        return NULL;
-    info->protocol = strtok(strcpy((char *)malloc(strlen(url) + 1), url), "://");
-    info->site = strstr(url, "://");
-    if (info->site)
+    int count = 0;
+    const char *pos = a;
+    while (pos = strstr(pos, b))
     {
-        info->site += 3;
-        char *site_port_path = strcpy((char *)calloc(1, strlen(info->site) + 1), info->site);
-        info->site = strtok(site_port_path, ":");
-        info->site = strtok(site_port_path, "/");
+        count++;
+        pos += strlen(b);
     }
-    else
-    {
-        char *site_port_path = strcpy((char *)calloc(1, strlen(url) + 1), url);
-        info->site = strtok(site_port_path, ":");
-        info->site = strtok(site_port_path, "/");
-    }
-    char *URL = strcpy((char *)malloc(strlen(url) + 1), url);
-
-    info->port = strstr(URL + 6, ":");
-    char *port_path = 0;
-    char *port_path_copy = 0;
-    if (info->port && isdigit(*(port_path = (char *)info->port + 1)))
-    {
-        port_path_copy = strcpy((char *)malloc(strlen(port_path) + 1), port_path);
-        char *r = strtok(port_path, "/");
-        if (r)
-            info->port = r;
-        else
-            info->port = port_path;
-    }
-    else
-        info->port = "80";
-    if (port_path_copy)
-        info->path = port_path_copy + strlen(info->port ? info->port : "");
-    else
-    {
-        char *path = strstr(URL + 8, "/");
-        info->path = path ? path : "/";
-    }
-    int r = strcmp(info->protocol, info->site) == 0;
-    if (r && info->port == "80")
-        info->protocol = "http";
-    else if (r)
-        info->protocol = "None";
-    return info;
+    return count;
 }
 
-int main()
+void parse_url(url_info *info, const char *full_url)
 {
-    URL_INFO info;
-    split_url(&info, "https://students.iitk.ac.in/programmingclub/course/lectures/Lab%20Session%201.pdf");
-    printf("Protocol: %s\nSite: %s\nPort: %s\nPath: %s\n", info.protocol, info.site, info.port, info.path);
+    info->protocol = (char *)malloc(10);
+    info->host = (char *)malloc(255);
+    info->port = 0;
+    info->path = (char *)malloc(2000);
+
+    switch (count_sub_string(full_url, ":"))
+    {
+    case 0:
+        sscanf(full_url, "%99[^/]/%99[^\n]", info->host, info->path);
+        break;
+    case 1:
+        if (count_sub_string(full_url, "://"))
+            sscanf(full_url, "%99://%99/%99[^\n]", info->protocol, info->host,
+                   info->path);
+        else
+            sscanf(full_url, "%s:%d/%s[^\n]", info->host, &info->port,
+                   info->path);
+        break;
+    case 2:
+        sscanf(full_url, "%99[^:]://%99[^:]:%99d/%99[^\n]", info->protocol,
+               info->host, &info->port, info->path);
+        break;
+    default:
+        printf("invalid URL format!\n");
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    url_info *info = (url_info *)malloc(sizeof(url_info));
+    if (info == NULL || argv[1] == NULL)
+        return -1;
+
+    parse_url(info, argv[1]);
+    printf("Protocol: %s\nHost: %s\nPort: %d\nPath: %s\n", info->protocol,
+           info->host, info->port, info->path);
+
+    free(info->protocol);
+    free(info->host);
+    free(info->path);
+    free(info);
+
     return 0;
 }
+/*
+#include <stdio.h>
+
+int main(void)
+{
+    const char text[] = "http://www.abc.xyz:8888/servlet/rece";
+    char ip[100];
+    char pro[10];
+    int port = 80;
+    char page[100];
+    sscanf(text, "%99[^:]://%99[^:]:%99d/%99[^\n]",pro, ip, &port, page);
+    printf("protocol = \"%s\"\n", pro);
+    printf("ip = \"%s\"\n", ip);
+    printf("port = \"%d\"\n", port);
+    printf("page = \"%s\"\n", page);
+    return 0;
+}
+*/

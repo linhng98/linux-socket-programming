@@ -1,15 +1,14 @@
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <regex.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
-#include <regex.h>
-
 
 int ReadHttpStatus(int sock)
 {
@@ -40,7 +39,7 @@ int ReadHttpStatus(int sock)
     return (bytes_received > 0) ? status : 0;
 }
 
-//the only filed that it parsed is 'Content-Length'
+// the only filed that it parsed is 'Content-Length'
 int ParseHeader(int sock)
 {
     char c;
@@ -55,15 +54,15 @@ int ParseHeader(int sock)
             exit(1);
         }
 
-        if ((ptr[-3] == '\r') && (ptr[-2] == '\n') &&
-            (ptr[-1] == '\r') && (*ptr == '\n'))
+        if ((ptr[-3] == '\r') && (ptr[-2] == '\n') && (ptr[-1] == '\r') &&
+            (*ptr == '\n'))
             break;
         ptr++;
     }
 
     *ptr = 0;
     ptr = buff + 4;
-    //printf("%s",ptr);
+    // printf("%s",ptr);
 
     if (bytes_received)
     {
@@ -73,7 +72,7 @@ int ParseHeader(int sock)
             sscanf(ptr, "%*s %d", &bytes_received);
         }
         else
-            bytes_received = -1; //unknown size
+            bytes_received = -1; // unknown size
 
         printf("Content-Length: %d\n", bytes_received);
     }
@@ -110,7 +109,8 @@ int main(void)
     bzero(&(server_addr.sin_zero), 8);
 
     printf("Connecting ...\n");
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1)
+    if (connect(sock, (struct sockaddr *)&server_addr,
+                sizeof(struct sockaddr)) == -1)
     {
         perror("Connect");
         exit(1);
@@ -118,7 +118,8 @@ int main(void)
 
     printf("Sending data ...\n");
 
-    snprintf(send_data, sizeof(send_data), "GET /%s HTTP/1.1\r\nHost: %s\r\n\r\n", path, domain);
+    snprintf(send_data, sizeof(send_data),
+             "GET /%s HTTP/1.1\r\nHost: %s\r\n\r\n", path, domain);
 
     if (send(sock, send_data, strlen(send_data), 0) == -1)
     {
@@ -127,7 +128,7 @@ int main(void)
     }
     printf("Data sent.\n");
 
-    //fp=fopen("received_file","wb");
+    // fp=fopen("received_file","wb");
     printf("Recieving data...\n\n");
 
     int contentlengh;
