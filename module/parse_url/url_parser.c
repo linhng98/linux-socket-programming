@@ -1,10 +1,10 @@
-#include "parse_url.h"
+#include "url_parser.h"
 
 int count_sub_string(const char *a, const char *b)
 {
     int count = 0;
     const char *pos = a;
-    while (pos = strstr(pos, b))
+    while ((pos = strstr(pos, b)))
     {
         count++;
         pos += strlen(b);
@@ -46,5 +46,4 @@ void free_urlinfo(url_info *info)
     free(info->host);
     free(info->path);
     free(info->protocol);
-    free(info);
 }
