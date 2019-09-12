@@ -97,7 +97,7 @@ void get_URL_info(sockaddr_in *addr, url_info *info)
 int check_is_file(char *path)
 {
     char *ptr = path;
-    while (ptr + 1 != NULL)
+    while (*(ptr + 1) != '\0')
         ptr++;
 
     if (*ptr != '/')
