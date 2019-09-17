@@ -8,7 +8,7 @@
 CC = gcc
 CFLAGS  = -g -Wall
 TARGET = 1612340
-OBJ = main.o url_parser.o
+OBJ = main.o url_parser.o header_parser.o
 URL_PRS_PATH = ./module/parse_url/
 HD_PRS_PATH = ./module/parse_response_header/
 BIN_PATH = ./bin/

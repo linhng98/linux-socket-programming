@@ -2,7 +2,9 @@
 #define HEADER_RES_PARSER_H
 
 #include <stdio.h>
-#include <linux/socket.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <stdlib.h>
 
 #define HEADER_SIZE 5000
 
@@ -20,6 +22,7 @@ typedef struct
 } header;
 
 int get_headers(char* hbuff, int sockfd);
-int search_header_value(char* value, char* hbuff);
+int search_header_value(char* value, char* header, char* hbuff);
+int get_status_code(char* hbuff);
 
 #endif /* HEADER_RES_PARSER_H */

@@ -1,8 +1,7 @@
-#include "module/parse_url/url_parser.h"
 #include "module/parse_response_header/header_res_parser.h"
+#include "module/parse_url/url_parser.h"
 #include <arpa/inet.h>
 #include <libgen.h>
-#include <linux/limits.h>
 #include <linux/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -19,9 +18,8 @@ typedef struct in_addr in_addr;
 void error_handler(char *message);
 void get_URL_info(sockaddr_in *addr, url_info *info);
 int check_is_file(char *path);
-int download_file(int sockfd, char* exec_dir, url_info* info);
-int download_dir(int sockfd, char* exec_dir, url_info* info);
-
+int download_file(int sockfd, char *exec_dir, url_info *info);
+int download_dir(int sockfd, char *exec_dir, url_info *info);
 
 int main(int argc, char const *argv[])
 {
@@ -44,12 +42,6 @@ int main(int argc, char const *argv[])
     if (info == NULL)
         error_handler("not enough memory space");
     parse_url(info, argv[1]);
-
-    printf("protocol: %s\n"
-           "host: %s\n"
-           "port: %d\n"
-           "path: %s\n",
-           info->protocol, info->host, info->port, info->path);
 
     // get data from URLinfo to sockaddr_in
     get_URL_info(addr, info);
@@ -83,8 +75,16 @@ int main(int argc, char const *argv[])
     char *exec_dir = dirname(
         realpath(argv[0], NULL)); // get abs directory of executable file
 
-    if(check_is_file(info->path))
+    if (check_is_file(info->path))
         download_file(sockfd, exec_dir, info);
+    else
+        download_dir(sockfd, exec_dir, info);
+
+    printf("protocol: %s\n"
+           "host: %s\n"
+           "port: %d\n"
+           "path: %s\n",
+           info->protocol, info->host, info->port, info->path);
 
     // close file and socket
     close(sockfd);
@@ -123,14 +123,57 @@ int check_is_file(char *path)
     return 0;
 }
 
-int download_file(int sockfd, char* exec_dir, url_info* info)
+int download_file(int sockfd, char *exec_dir, url_info *info)
 {
-    char save_path[PATH_MAX]; // use to save path of downloaded file (or dir)
-    sprintf(save_path, "%s/%s.http", exec_dir, basename(info->path));
+    int ret;
 
-    char* hbuff = (char*)malloc(HEADER_SIZE);
+    // get path same level with executable file to save
+    char save_path[PATH_MAX]; // use this path to save downloaded file
+    sprintf(save_path, "%s/%s", exec_dir,
+            basename(strcpy((char *)malloc(PATH_MAX), info->path)));
+
+    // get hhtp headers
+    char hbuff[HEADER_SIZE];
     get_headers(hbuff, sockfd);
-    int filelen = search_header_value("Content-Length", hbuff);
+    printf("%s", hbuff);
 
-    free(hbuff);
+    // status code wrong
+    if ((ret = get_status_code(hbuff)) != 200)
+    {
+        printf("status code is %d", ret);
+        return -1;
+    }
+
+    // get length of file
+    char value[100];
+    ret = search_header_value(value, "Content-Length", hbuff);
+    if (ret < 0)
+        return -1; // not file
+
+    int flen = atoi(value);
+
+    int bytes_recv = 0;
+    char buffer[BUFFSZ];
+    FILE *fn = fopen(save_path, "wb");
+    while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
+    {
+        fwrite(buffer, 1, ret, fn);
+        memset(buffer, '\0', ret);
+
+        bytes_recv += ret;
+        if (bytes_recv == flen)
+            break;
+    }
+
+    return 0;
+}
+
+int download_dir(int sockfd, char *exec_dir, url_info *info)
+{
+    // get path same level with executable file to save
+    char save_path[PATH_MAX]; // use this path to save downloaded dir
+    sprintf(save_path, "%s/%s", exec_dir,
+            basename(strcpy((char *)malloc(PATH_MAX), info->path)));
+
+    return 0;
 }
