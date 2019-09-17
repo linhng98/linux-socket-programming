@@ -1,4 +1,5 @@
 #include "module/parse_url/url_parser.h"
+#include "module/parse_response_header/header_res_parser.h"
 #include <arpa/inet.h>
 #include <libgen.h>
 #include <linux/limits.h>
@@ -17,6 +18,10 @@ typedef struct in_addr in_addr;
 
 void error_handler(char *message);
 void get_URL_info(sockaddr_in *addr, url_info *info);
+int check_is_file(char *path);
+int download_file(int sockfd, char* exec_dir, url_info* info);
+int download_dir(int sockfd, char* exec_dir, url_info* info);
+
 
 int main(int argc, char const *argv[])
 {
@@ -49,6 +54,7 @@ int main(int argc, char const *argv[])
     // get data from URLinfo to sockaddr_in
     get_URL_info(addr, info);
 
+    // connect to remote server
     int ret = connect(sockfd, (sockaddr *)addr, INET_ADDRSTRLEN);
     if (ret < 0)
         error_handler("connect to server fail");
@@ -56,6 +62,7 @@ int main(int argc, char const *argv[])
     char *buffer = (char *)malloc(BUFFSZ);
     memset(buffer, '\0', BUFFSZ);
 
+    // send request headers to server
     snprintf(
         buffer, BUFFSZ,
         "GET /%s HTTP/1.1\r\n"
@@ -75,16 +82,12 @@ int main(int argc, char const *argv[])
 
     char *exec_dir = dirname(
         realpath(argv[0], NULL)); // get abs directory of executable file
-    char save_path[PATH_MAX]; // use to save path of downloaded file (or dir)
-    sprintf(save_path, "%s/%s.http", exec_dir, basename(info->path));
 
-    FILE *fd_data = fopen(save_path, "wb");
-    while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
-    {
-        printf("%d\n", ret);
-        fwrite(buffer, 1, ret, fd_data);
-        memset(buffer, '\0', ret);
-    }
+    if(check_is_file(info->path))
+        download_file(sockfd, exec_dir, info);
+
+    // close file and socket
+    close(sockfd);
 
     // free data allocated
     free(info);
@@ -107,4 +110,27 @@ void get_URL_info(sockaddr_in *addr, url_info *info)
     hostent *he = gethostbyname(info->host);
     addr->sin_addr = *((in_addr *)he->h_addr_list[0]);
     bzero(&(addr->sin_zero), 8);
+}
+
+int check_is_file(char *path)
+{
+    char *ptr = path;
+    while (*(ptr + 1) != '\0')
+        ptr++;
+
+    if (*ptr != '/')
+        return 1;
+    return 0;
+}
+
+int download_file(int sockfd, char* exec_dir, url_info* info)
+{
+    char save_path[PATH_MAX]; // use to save path of downloaded file (or dir)
+    sprintf(save_path, "%s/%s.http", exec_dir, basename(info->path));
+
+    char* hbuff = (char*)malloc(HEADER_SIZE);
+    get_headers(hbuff, sockfd);
+    int filelen = search_header_value("Content-Length", hbuff);
+
+    free(hbuff);
 }
