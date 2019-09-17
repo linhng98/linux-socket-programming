@@ -14,10 +14,8 @@ int count_sub_string(const char *a, const char *b)
 
 void parse_url(url_info *info, const char *full_url)
 {
-    info->protocol = strcpy((char *)malloc(10), "http");
-    info->host = (char *)malloc(255);
+    strcpy(info->protocol, "http");
     info->port = 80;
-    info->path = (char *)malloc(2000);
 
     switch (count_sub_string(full_url, ":"))
     {
@@ -39,11 +37,4 @@ void parse_url(url_info *info, const char *full_url)
     default:
         printf("invalid URL format!\n");
     }
-}
-
-void free_urlinfo(url_info *info)
-{
-    free(info->host);
-    free(info->path);
-    free(info->protocol);
 }

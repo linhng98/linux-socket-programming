@@ -7,14 +7,12 @@
 
 typedef struct
 {
-    char *protocol;
-    char *host;
+    char protocol[10];
+    char host[255];
     int port;
-    char *path;
+    char path[2000];
 } url_info;
 
-int count_sub_string(const char *a, const char *b);
 void parse_url(url_info *info, const char *full_url);
-void free_urlinfo(url_info *info);
 
 #endif /* URL_PARSER_H */
