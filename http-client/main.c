@@ -21,8 +21,8 @@ void error_handler(char *message);
 void get_URL_info(sockaddr_in *addr, url_info *info);
 int check_is_file(char *path);
 void ParseHref(char *f1, char *f2);
-int download_file(int sockfd, char *save_dir, url_info *info);
-int download_dir(int sockfd, char *save_dir, url_info *info);
+int download_file(sockaddr_in *addr, char *save_dir, url_info *info);
+int download_dir(sockaddr_in *addr, char *save_dir, url_info *info);
 
 int main(int argc, char const *argv[])
 {
@@ -36,10 +36,6 @@ int main(int argc, char const *argv[])
     if (addr == NULL)
         error_handler("not enough memory space");
 
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        error_handler("create socket fd fail");
-
     // parse url field from argv
     url_info *info = (url_info *)malloc(sizeof(url_info));
     if (info == NULL)
@@ -49,23 +45,14 @@ int main(int argc, char const *argv[])
     // get data from URLinfo to sockaddr_in
     get_URL_info(addr, info);
 
-    // connect to remote server
-    int ret = connect(sockfd, (sockaddr *)addr, INET_ADDRSTRLEN);
-    if (ret < 0)
-        error_handler("connect to server fail");
-
     char *exec_dir = dirname(
         realpath(argv[0], NULL)); // get abs directory of executable file
 
     if (check_is_file(info->path))
-    {
-        download_file(sockfd, exec_dir, info);
-        download_file(sockfd, exec_dir, info);
-    }
+        download_file(addr, exec_dir, info);
     else
-        download_dir(sockfd, exec_dir, info);
+        download_dir(addr, exec_dir, info);
 
-    close(sockfd);
     // free data allocated
     free(info);
     free(addr);
@@ -134,7 +121,7 @@ void ParseHref(char *f1, char *f2)
     fclose(fdes);
 }
 
-int download_file(int sockfd, char *save_dir, url_info *info)
+int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
 {
     int ret;
     char buffer[BUFFSZ];
@@ -152,6 +139,15 @@ int download_file(int sockfd, char *save_dir, url_info *info)
              "\r\n",
              info->path, info->host);
 
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        error_handler("create socket fd fail");
+
+    // connect to remote server
+    ret = connect(sockfd, (sockaddr *)addr, INET_ADDRSTRLEN);
+    if (ret < 0)
+        error_handler("connect to server fail");
+
     ret = send(sockfd, buffer, BUFFSZ, 0);
     if (ret < 0)
         error_handler("send data fail");
@@ -161,6 +157,12 @@ int download_file(int sockfd, char *save_dir, url_info *info)
     char hbuff[HEADER_SIZE];
     memset(hbuff, '\0', HEADER_SIZE);
     get_headers(hbuff, sockfd);
+
+    if (strlen(hbuff) == 0)
+    {
+        printf("no header response\n");
+        return -1;
+    }
     printf("%s", hbuff);
 
     // status code wrong
@@ -200,11 +202,11 @@ int download_file(int sockfd, char *save_dir, url_info *info)
         memset(buffer, '\0', ret);
     }
     fclose(nullfile);
-    
+    close(sockfd);
     return 0;
 }
 
-int download_dir(int sockfd, char *save_dir, url_info *info)
+int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
 {
     int ret;
     char buffer[BUFFSZ];
@@ -225,6 +227,10 @@ int download_dir(int sockfd, char *save_dir, url_info *info)
              "\r\n",
              info->path, info->host);
 
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        error_handler("create socket fd fail");
+
     ret = send(sockfd, buffer, BUFFSZ, 0);
     if (ret < 0)
         error_handler("send data fail");
@@ -234,7 +240,6 @@ int download_dir(int sockfd, char *save_dir, url_info *info)
     char hbuff[HEADER_SIZE];
     memset(hbuff, '\0', HEADER_SIZE);
     get_headers(hbuff, sockfd);
-    printf("%s", hbuff);
 
     // status code wrong
     if ((ret = get_status_code(hbuff)) != 200)
@@ -252,6 +257,7 @@ int download_dir(int sockfd, char *save_dir, url_info *info)
     FILE *fsource = fopen(f1, "wb");
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
         fwrite(buffer, 1, ret, fsource);
+    close(sockfd); // close socket
     fclose(fsource);
 
     // parser href from fsource to fdes
@@ -274,7 +280,7 @@ int download_dir(int sockfd, char *save_dir, url_info *info)
         url_info newinfo;
         memcpy((char *)&newinfo, (char *)info, sizeof(newinfo));
         strcat(newinfo.path, name); // append name to path of url
-        download_file(sockfd, save_path, &newinfo);
+        download_file(addr, save_path, &newinfo);
     }
     fclose(fdes);
     // remove file

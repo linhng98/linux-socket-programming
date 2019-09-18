@@ -9,7 +9,6 @@ int get_headers(char *hbuff, int sockfd)
     {
         *ptr = c;
         ptr++;
-
         if (ptr[-1] == '\n' && ptr[-2] == '\r' && ptr[-3] == '\n' &&
             ptr[-4] == '\r')
             break;
