@@ -7,10 +7,14 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #define BUFFSZ 5000
 #define EXEC 1612340
+#define KILOBYTE 1024
+#define MEGABYTE 1024 * KILOBYTE
+#define GIGABYTE 1024 * MEGABYTE
 
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
@@ -23,6 +27,8 @@ int check_is_file(char *path);
 void ParseHref(char *f1, char *f2);
 int download_file(sockaddr_in *addr, char *save_dir, url_info *info);
 int download_dir(sockaddr_in *addr, char *save_dir, url_info *info);
+void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
+                  int time);
 
 int main(int argc, char const *argv[])
 {
@@ -148,6 +154,7 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
     if (ret < 0)
         error_handler("connect to server fail");
 
+    // send request to server
     ret = send(sockfd, buffer, BUFFSZ, 0);
     if (ret < 0)
         error_handler("send data fail");
@@ -179,18 +186,24 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
         return -1; // not file
 
     // get body data
-    int flen = atoi(value);
-    int bytes_recv = 0;
+    unsigned long flen = atoi(value);
+    unsigned long bytes_recv = 0;
     FILE *fn = fopen(save_path, "wb");
+
+    time_t start, end;
+    time(&start);
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
         fwrite(buffer, 1, ret, fn);
         memset(buffer, '\0', ret);
 
         bytes_recv += ret;
+        time(&end);
+        progress_bar(filename, bytes_recv, flen, difftime(end, start));
         if (bytes_recv == flen)
             break;
     }
+    printf("\n");
     fclose(fn);
 
     // get the rest message (if have)
@@ -231,12 +244,18 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
     if (sockfd < 0)
         error_handler("create socket fd fail");
 
+    // connect to remote server
+    ret = connect(sockfd, (sockaddr *)addr, INET_ADDRSTRLEN);
+    if (ret < 0)
+        error_handler("connect to server fail");
+
+    // send request to server
     ret = send(sockfd, buffer, BUFFSZ, 0);
     if (ret < 0)
         error_handler("send data fail");
     memset(buffer, '\0', strlen(buffer));
 
-    // get hhtp headers
+    // get http headers
     char hbuff[HEADER_SIZE];
     memset(hbuff, '\0', HEADER_SIZE);
     get_headers(hbuff, sockfd);
@@ -260,7 +279,7 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
     close(sockfd); // close socket
     fclose(fsource);
 
-    // parser href from fsource to fdes
+    // parse href from fsource to fdes
     ParseHref(f1, f2);
 
     // get filename from link.txt and download
@@ -280,11 +299,52 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
         url_info newinfo;
         memcpy((char *)&newinfo, (char *)info, sizeof(newinfo));
         strcat(newinfo.path, name); // append name to path of url
+        // download each file
         download_file(addr, save_path, &newinfo);
     }
     fclose(fdes);
     // remove file
-    // remove(f1);
-    // remove(f2);
+    remove(f1);
+    remove(f2);
     return 0;
+}
+
+void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
+                  int time)
+{
+    int barlen = 40;
+    int max_name_len = 60;
+
+    // clear entire line then back to first line
+    printf("%c[2K", 27);
+
+    // print filename
+    printf("%s", name);
+    if (strlen(name) < max_name_len)
+    {
+        for (int i = 0; i < max_name_len - strlen(name); i++)
+            printf(" ");
+    }
+
+    // print total size
+    if (totalbyte < KILOBYTE)
+        printf("  %20.2f B", totalbyte * 1.0);
+    else if (totalbyte >= KILOBYTE && totalbyte < MEGABYTE)
+        printf("%20.2f KiB", totalbyte * 1.0 / (KILOBYTE));
+    else if (totalbyte >= MEGABYTE && totalbyte < GIGABYTE)
+        printf("%20.2f MiB", totalbyte * 1.0 / (MEGABYTE));
+    else
+        printf("%20.2f GiB", totalbyte * 1.0 / (GIGABYTE));
+
+    // print time
+    int h1 = (time / (60 * 60)) / 10;
+    int h2 = (time / (60 * 60)) % 10;
+    int m1 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) / 10;
+    int m2 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) % 10;
+    int s1 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) / 10;
+    int s2 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) % 10;
+    printf("%5d%d:%d%d:%d%d", h1, h2, m1, m2, s1, s2);
+
+    printf("\r");
+    fflush(stdout);
 }
