@@ -5,10 +5,12 @@
 #include <linux/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #define BUFFSZ 5000
+#define EXEC 1612340
 
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
@@ -18,8 +20,9 @@ typedef struct in_addr in_addr;
 void error_handler(char *message);
 void get_URL_info(sockaddr_in *addr, url_info *info);
 int check_is_file(char *path);
-int download_file(int sockfd, char *exec_dir, url_info *info);
-int download_dir(int sockfd, char *exec_dir, url_info *info);
+void ParseHref(char *f1, char *f2);
+int download_file(int sockfd, char *save_dir, url_info *info);
+int download_dir(int sockfd, char *save_dir, url_info *info);
 
 int main(int argc, char const *argv[])
 {
@@ -51,48 +54,21 @@ int main(int argc, char const *argv[])
     if (ret < 0)
         error_handler("connect to server fail");
 
-    char *buffer = (char *)malloc(BUFFSZ);
-    memset(buffer, '\0', BUFFSZ);
-
-    // send request headers to server
-    snprintf(
-        buffer, BUFFSZ,
-        "GET /%s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        //"Accept: "
-        //"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
-        //"Accept-Language: en-US,en;q=0.5\r\n"
-        //"Accept-Encoding: gzip, deflate\r\n"
-        //"Connection: keep-alive\r\n"
-        "\r\n",
-        info->path, info->host);
-
-    ret = send(sockfd, buffer, BUFFSZ, 0);
-    if (ret < 0)
-        error_handler("send data fail");
-    memset(buffer, '\0', strlen(buffer));
-
     char *exec_dir = dirname(
         realpath(argv[0], NULL)); // get abs directory of executable file
 
     if (check_is_file(info->path))
+    {
         download_file(sockfd, exec_dir, info);
+        download_file(sockfd, exec_dir, info);
+    }
     else
         download_dir(sockfd, exec_dir, info);
 
-    printf("protocol: %s\n"
-           "host: %s\n"
-           "port: %d\n"
-           "path: %s\n",
-           info->protocol, info->host, info->port, info->path);
-
-    // close file and socket
     close(sockfd);
-
     // free data allocated
     free(info);
     free(addr);
-    free(buffer);
     exit(0);
 }
 
@@ -123,24 +99,74 @@ int check_is_file(char *path)
     return 0;
 }
 
-int download_file(int sockfd, char *exec_dir, url_info *info)
+void ParseHref(char *f1, char *f2)
+{
+    FILE *fsource = fopen(f1, "r");
+    FILE *fdes = fopen(f2, "w");
+
+    char buff[1000];
+    char file[100];
+    char *pos;
+    memset(buff, '\0', 1000);
+
+    while (fgets(buff, 1000, fsource))
+    {
+        pos = buff;
+        do
+        {
+            pos = strstr(pos, "href");
+            if (pos == NULL)
+                break;
+
+            sscanf(pos, "href=\"%99[^\"]\"%*s", file);
+
+            fputs(file, fdes);
+            fputs("\n", fdes);
+            memset(file, '\0', strlen(file));
+
+            pos++;
+
+        } while (pos != NULL);
+        memset(buff, '\0', strlen(buff));
+    }
+
+    fclose(fsource);
+    fclose(fdes);
+}
+
+int download_file(int sockfd, char *save_dir, url_info *info)
 {
     int ret;
+    char buffer[BUFFSZ];
+    memset(buffer, '\0', BUFFSZ);
 
     // get path same level with executable file to save
     char save_path[PATH_MAX]; // use this path to save downloaded file
-    sprintf(save_path, "%s/%s", exec_dir,
-            basename(strcpy((char *)malloc(PATH_MAX), info->path)));
+    char *filename = basename(strcpy((char *)malloc(PATH_MAX), info->path));
+    sprintf(save_path, "%s/%s", save_dir, filename);
+
+    // send request headers to server
+    snprintf(buffer, BUFFSZ,
+             "GET /%s HTTP/1.1\r\n"
+             "Host: %s\r\n"
+             "\r\n",
+             info->path, info->host);
+
+    ret = send(sockfd, buffer, BUFFSZ, 0);
+    if (ret < 0)
+        error_handler("send data fail");
+    memset(buffer, '\0', strlen(buffer));
 
     // get hhtp headers
     char hbuff[HEADER_SIZE];
+    memset(hbuff, '\0', HEADER_SIZE);
     get_headers(hbuff, sockfd);
     printf("%s", hbuff);
 
     // status code wrong
     if ((ret = get_status_code(hbuff)) != 200)
     {
-        printf("status code is %d", ret);
+        printf("status code is %d\n", ret);
         return -1;
     }
 
@@ -150,10 +176,9 @@ int download_file(int sockfd, char *exec_dir, url_info *info)
     if (ret < 0)
         return -1; // not file
 
+    // get body data
     int flen = atoi(value);
-
     int bytes_recv = 0;
-    char buffer[BUFFSZ];
     FILE *fn = fopen(save_path, "wb");
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
@@ -164,16 +189,96 @@ int download_file(int sockfd, char *exec_dir, url_info *info)
         if (bytes_recv == flen)
             break;
     }
+    fclose(fn);
 
+    // get the rest message (if have)
+    FILE *nullfile = fopen("/dev/null", "w");
+    while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
+    {
+        // puts all unnecessary content to /dev/null
+        fputs(buffer, nullfile);
+        memset(buffer, '\0', ret);
+    }
+    fclose(nullfile);
+    
     return 0;
 }
 
-int download_dir(int sockfd, char *exec_dir, url_info *info)
+int download_dir(int sockfd, char *save_dir, url_info *info)
 {
+    int ret;
+    char buffer[BUFFSZ];
+    memset(buffer, '\0', BUFFSZ);
+
     // get path same level with executable file to save
     char save_path[PATH_MAX]; // use this path to save downloaded dir
-    sprintf(save_path, "%s/%s", exec_dir,
-            basename(strcpy((char *)malloc(PATH_MAX), info->path)));
+    char *dirname = basename(strcpy((char *)malloc(PATH_MAX), info->path));
+    sprintf(save_path, "%s/%s/", save_dir, dirname);
 
+    // create directory
+    ret = mkdir(save_path, 0755);
+
+    // send request headers to server
+    snprintf(buffer, BUFFSZ,
+             "GET /%s HTTP/1.1\r\n"
+             "Host: %s\r\n"
+             "\r\n",
+             info->path, info->host);
+
+    ret = send(sockfd, buffer, BUFFSZ, 0);
+    if (ret < 0)
+        error_handler("send data fail");
+    memset(buffer, '\0', strlen(buffer));
+
+    // get hhtp headers
+    char hbuff[HEADER_SIZE];
+    memset(hbuff, '\0', HEADER_SIZE);
+    get_headers(hbuff, sockfd);
+    printf("%s", hbuff);
+
+    // status code wrong
+    if ((ret = get_status_code(hbuff)) != 200)
+    {
+        printf("status code is %d\n", ret);
+        return -1;
+    }
+
+    // get html body to fsource
+    char f1[PATH_MAX]; // f1 store html body
+    sprintf(f1, "%s/body.html", save_dir);
+    char f2[PATH_MAX]; // f2 store file name (href) parse from f1
+    sprintf(f2, "%s/link.txt", save_dir);
+
+    FILE *fsource = fopen(f1, "wb");
+    while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
+        fwrite(buffer, 1, ret, fsource);
+    fclose(fsource);
+
+    // parser href from fsource to fdes
+    ParseHref(f1, f2);
+
+    // get filename from link.txt and download
+    FILE *fdes = fopen(f2, "r");
+    char name[100];
+    char *pos;
+    while (fgets(name, sizeof(name), fdes))
+    {
+        // check name is filename or not
+        if (strstr(name, "/") || strstr(name, "#") || strstr(name, "?"))
+            continue; // not filename
+
+        // remove trailing \n character
+        if ((pos = strchr(name, '\n')) != NULL)
+            *pos = '\0';
+
+        url_info newinfo;
+        memcpy((char *)&newinfo, (char *)info, sizeof(newinfo));
+        strcat(newinfo.path, name); // append name to path of url
+        download_file(sockfd, save_path, &newinfo);
+    }
+    fclose(fdes);
+    // remove file
+    // remove(f1);
+    // remove(f2);
     return 0;
 }
