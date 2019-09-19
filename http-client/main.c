@@ -311,7 +311,7 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
 void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
                   int time)
 {
-    int barlen = 30;
+    int barlen = 20;
     int max_name_len = 50;
 
     // clear entire line then back to first line
@@ -352,7 +352,7 @@ void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
         printf("#");
     for (int i = 0; i < barlen - brick; i++)
         printf("-");
-    printf("%3c  %d%%", '[', percent);
+    printf("%c%3d%%", ']', percent);
 
     printf("\r");
     fflush(stdout);
