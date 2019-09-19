@@ -2,6 +2,7 @@
 #include "module/parse_url/url_parser.h"
 #include <arpa/inet.h>
 #include <libgen.h>
+#include <linux/limits.h>
 #include <linux/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -326,14 +327,14 @@ void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
     }
 
     // print total size
-    if (totalbyte < KILOBYTE)
-        printf("  %10.2f B", totalbyte * 1.0);
-    else if (totalbyte >= KILOBYTE && totalbyte < MEGABYTE)
-        printf("%10.2f KiB", totalbyte * 1.0 / (KILOBYTE));
-    else if (totalbyte >= MEGABYTE && totalbyte < GIGABYTE)
-        printf("%10.2f MiB", totalbyte * 1.0 / (MEGABYTE));
+    if (cbyte < KILOBYTE)
+        printf("  %10.2f B", cbyte * 1.0);
+    else if (cbyte >= KILOBYTE && cbyte < MEGABYTE)
+        printf("%10.2f KiB", cbyte * 1.0 / (KILOBYTE));
+    else if (cbyte >= MEGABYTE && cbyte < GIGABYTE)
+        printf("%10.2f MiB", cbyte * 1.0 / (MEGABYTE));
     else
-        printf("%10.2f GiB", totalbyte * 1.0 / (GIGABYTE));
+        printf("%10.2f GiB", cbyte * 1.0 / (GIGABYTE));
 
     // print time
     int h1 = (time / (60 * 60)) / 10;
