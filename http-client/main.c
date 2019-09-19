@@ -147,8 +147,8 @@ int download_file(sockaddr_in *addr, char *save_path, url_info *info)
 
     // send request headers to server
     snprintf(buffer, BUFFSZ,
-             "GET /%s HTTP/1.1\r\n"
-             "Host: %s\r\n"
+             "GET /%s HTTP/1.0\r\n"
+             "HOST: %s\r\n"
              "\r\n",
              info->path, info->host);
 
@@ -162,7 +162,7 @@ int download_file(sockaddr_in *addr, char *save_path, url_info *info)
         error_handler("connect to server fail");
 
     // send request to server
-    ret = send(sockfd, buffer, BUFFSZ, 0);
+    ret = send(sockfd, buffer, strlen(buffer), 0);
     if (ret < 0)
         error_handler("send data fail");
     memset(buffer, '\0', strlen(buffer));
@@ -201,33 +201,23 @@ int download_file(sockaddr_in *addr, char *save_path, url_info *info)
     int printed_char = 0;
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
-        // handle error
         if (ret < 0)
             printf("%s", strerror(errno));
 
-        // server send some error message
-        if (ret + bytes_recv > flen)
-            ret = fwrite(buffer, 1, flen - bytes_recv, fn);
-        else
-            ret = fwrite(buffer, 1, ret, fn);
-        memset(buffer, '\0', BUFFSZ);
+        fwrite(buffer, 1, ret, fn);
+        memset(buffer, '\0', ret);
 
         bytes_recv += ret;
         time(&end);
         clean_progressbar(printed_char);
         printed_char =
             progress_bar(filename, bytes_recv, flen, difftime(end, start));
-
         if (bytes_recv == flen)
             break;
     }
     printf("\n");
+
     fclose(fn);
-
-    // get the rest useless message (if have)
-    while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
-        memset(buffer, '\0', ret);
-
     close(sockfd);
     return 0;
 }
@@ -248,7 +238,7 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
 
     // send request headers to server
     snprintf(buffer, BUFFSZ,
-             "GET /%s HTTP/1.1\r\n"
+             "GET /%s HTTP/1.0\r\n"
              "Host: %s\r\n"
              "\r\n",
              info->path, info->host);
@@ -263,7 +253,7 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
         error_handler("connect to server fail");
 
     // send request to server
-    ret = send(sockfd, buffer, BUFFSZ, 0);
+    ret = send(sockfd, buffer, strlen(buffer), 0);
     if (ret < 0)
         error_handler("send data fail");
     memset(buffer, '\0', strlen(buffer));
@@ -351,9 +341,9 @@ int progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
 
     // print time
     int h1 = (time / (60 * 60)) / 10;
-    int h2 = (time / (60 * 60)) % 10;
+    int h2 = ((int)time / (60 * 60)) % 10;
     int m1 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) / 10;
-    int m2 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) % 10;
+    int m2 = (((int)time - (h1 * 10 + h2) * 60 * 60) / 60) % 10;
     int s1 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) / 10;
     int s2 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) % 10;
     printed += printf("%5d%d:%d%d", m1, m2, s1, s2);
