@@ -170,7 +170,6 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
         printf("no header response\n");
         return -1;
     }
-    printf("%s", hbuff);
 
     // status code wrong
     if ((ret = get_status_code(hbuff)) != 200)
@@ -312,8 +311,8 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
 void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
                   int time)
 {
-    int barlen = 40;
-    int max_name_len = 60;
+    int barlen = 30;
+    int max_name_len = 50;
 
     // clear entire line then back to first line
     printf("%c[2K", 27);
@@ -328,13 +327,13 @@ void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
 
     // print total size
     if (totalbyte < KILOBYTE)
-        printf("  %20.2f B", totalbyte * 1.0);
+        printf("  %10.2f B", totalbyte * 1.0);
     else if (totalbyte >= KILOBYTE && totalbyte < MEGABYTE)
-        printf("%20.2f KiB", totalbyte * 1.0 / (KILOBYTE));
+        printf("%10.2f KiB", totalbyte * 1.0 / (KILOBYTE));
     else if (totalbyte >= MEGABYTE && totalbyte < GIGABYTE)
-        printf("%20.2f MiB", totalbyte * 1.0 / (MEGABYTE));
+        printf("%10.2f MiB", totalbyte * 1.0 / (MEGABYTE));
     else
-        printf("%20.2f GiB", totalbyte * 1.0 / (GIGABYTE));
+        printf("%10.2f GiB", totalbyte * 1.0 / (GIGABYTE));
 
     // print time
     int h1 = (time / (60 * 60)) / 10;
@@ -343,7 +342,17 @@ void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
     int m2 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) % 10;
     int s1 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) / 10;
     int s2 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) % 10;
-    printf("%5d%d:%d%d:%d%d", h1, h2, m1, m2, s1, s2);
+    printf("%5d%d:%d%d", m1, m2, s1, s2);
+
+    // print bar
+    printf("%3c", '[');
+    int percent = cbyte * 100 / totalbyte;
+    int brick = percent * barlen / 100;
+    for (int i = 0; i < brick; i++)
+        printf("#");
+    for (int i = 0; i < barlen - brick; i++)
+        printf("-");
+    printf("%3c  %d%%", '[', percent);
 
     printf("\r");
     fflush(stdout);
