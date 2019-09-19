@@ -5,8 +5,10 @@
 #include <libgen.h>
 #include <linux/limits.h>
 #include <linux/socket.h>
+#include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -29,8 +31,9 @@ int check_is_file(char *path);
 void ParseHref(char *f1, char *f2);
 int download_file(sockaddr_in *addr, char *save_dir, url_info *info);
 int download_dir(sockaddr_in *addr, char *save_dir, url_info *info);
-void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
-                  int time);
+int progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
+                 int time);
+void clean_progressbar(int pchar);
 
 int main(int argc, char const *argv[])
 {
@@ -193,6 +196,7 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
 
     time_t start, end;
     time(&start);
+    int printed_char = 0;
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
         // handle error
@@ -208,7 +212,9 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
 
         bytes_recv += ret;
         time(&end);
-        progress_bar(filename, bytes_recv, flen, difftime(end, start));
+        clean_progressbar(printed_char);
+        printed_char =
+            progress_bar(filename, bytes_recv, flen, difftime(end, start));
 
         if (bytes_recv == flen)
             break;
@@ -314,32 +320,30 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
     return 0;
 }
 
-void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
-                  int time)
+int progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
+                 int time)
 {
     int barlen = 20;
     int max_name_len = 50;
-
-    // clear entire line then back to first line
-    printf("%c[2K", 27);
+    int printed = 0;
 
     // print filename
-    printf("%s", name);
+    printed += printf("%s", name);
     if (strlen(name) < max_name_len)
     {
         for (int i = 0; i < max_name_len - strlen(name); i++)
-            printf(" ");
+            printed += printf(" ");
     }
 
     // print total size
     if (cbyte < KILOBYTE)
-        printf("  %10.2f B", cbyte * 1.0);
+        printed += printf("  %10.2f B", cbyte * 1.0);
     else if (cbyte >= KILOBYTE && cbyte < MEGABYTE)
-        printf("%10.2f KiB", cbyte * 1.0 / (KILOBYTE));
+        printed += printf("%10.2f KiB", cbyte * 1.0 / (KILOBYTE));
     else if (cbyte >= MEGABYTE && cbyte < GIGABYTE)
-        printf("%10.2f MiB", cbyte * 1.0 / (MEGABYTE));
+        printed += printf("%10.2f MiB", cbyte * 1.0 / (MEGABYTE));
     else
-        printf("%10.2f GiB", cbyte * 1.0 / (GIGABYTE));
+        printed += printf("%10.2f GiB", cbyte * 1.0 / (GIGABYTE));
 
     // print time
     int h1 = (time / (60 * 60)) / 10;
@@ -348,18 +352,40 @@ void progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
     int m2 = ((time - (h1 * 10 + h2) * 60 * 60) / 60) % 10;
     int s1 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) / 10;
     int s2 = (time - (h1 * 10 + h2) * 60 * 60 - (m1 * 10 + m2) * 60) % 10;
-    printf("%5d%d:%d%d", m1, m2, s1, s2);
+    printed += printf("%5d%d:%d%d", m1, m2, s1, s2);
 
     // print bar
-    printf("%3c", '[');
+    printed += printf("%3c", '[');
     int percent = cbyte * 100 / totalbyte;
     int brick = percent * barlen / 100;
     for (int i = 0; i < brick; i++)
-        printf("#");
+        printed += printf("#");
     for (int i = 0; i < barlen - brick; i++)
-        printf("-");
-    printf("%c%3d%%", ']', percent);
+        printed += printf("-");
+    printed += printf("%c%3d%%", ']', percent);
 
-    printf("\r");
     fflush(stdout);
+    return printed;
+}
+
+void clean_progressbar(int pchar)
+{
+    if (pchar <= 0)
+        return;
+
+    // get width height of current terminal
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
+    printf("%c[J", 27);      // clear screen from cursor down
+
+    int line = floor(pchar * 1.0 / w.ws_col);
+    for (int i = 0; i < line; i++)
+    {
+        printf("%c[2K", 27);     // clear line
+        printf("%c[%dA", 27, 1); // move cursur up 1 line
+    }
+
+    // clear and back to begin line
+    printf("%c[2K\r", 27);
 }

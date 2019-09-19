@@ -6,7 +6,7 @@
 #
 # for C++ define  CC = g++
 CC = gcc
-CFLAGS  = -g -Wall
+CFLAGS  = -g -Wall -lm
 TARGET = 1612340
 OBJ = main.o url_parser.o header_parser.o
 URL_PRS_PATH = ./module/parse_url/
