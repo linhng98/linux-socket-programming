@@ -1,6 +1,7 @@
 #include "module/parse_response_header/header_res_parser.h"
 #include "module/parse_url/url_parser.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <libgen.h>
 #include <linux/limits.h>
 #include <linux/socket.h>
@@ -192,29 +193,35 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
 
     time_t start, end;
     time(&start);
+    printf("%ld\n", flen);
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
-        fwrite(buffer, 1, ret, fn);
-        memset(buffer, '\0', ret);
+        // handle error
+        if (ret < 0)
+            printf("%s", strerror(errno));
+            
+        // server send some error message
+        if (ret + bytes_recv > flen)
+            ret = fwrite(buffer, 1, flen - bytes_recv, fn);
+        else
+            ret = fwrite(buffer, 1, ret, fn);
+        memset(buffer, '\0', BUFFSZ);
 
         bytes_recv += ret;
         time(&end);
         progress_bar(filename, bytes_recv, flen, difftime(end, start));
+
         if (bytes_recv == flen)
             break;
     }
     printf("\n");
+    printf("%ld\n", bytes_recv);
     fclose(fn);
 
-    // get the rest message (if have)
-    FILE *nullfile = fopen("/dev/null", "w");
+    // get the rest useless message (if have)
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
-    {
-        // puts all unnecessary content to /dev/null
-        fputs(buffer, nullfile);
         memset(buffer, '\0', ret);
-    }
-    fclose(nullfile);
+
     close(sockfd);
     return 0;
 }
