@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 #define BUFFSZ 5000
-#define EXEC 1612340
+#define EXEC "1612340"
 #define KILOBYTE 1024
 #define MEGABYTE 1024 * KILOBYTE
 #define GIGABYTE 1024 * MEGABYTE
@@ -138,7 +138,7 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
     // get path same level with executable file to save
     char save_path[PATH_MAX]; // use this path to save downloaded file
     char *filename = basename(strcpy((char *)malloc(PATH_MAX), info->path));
-    sprintf(save_path, "%s/%s", save_dir, filename);
+    sprintf(save_path, "%s/%s_%s", save_dir, EXEC, filename);
 
     // send request headers to server
     snprintf(buffer, BUFFSZ,
@@ -233,7 +233,7 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
     // get path same level with executable file to save
     char save_path[PATH_MAX]; // use this path to save downloaded dir
     char *dirname = basename(strcpy((char *)malloc(PATH_MAX), info->path));
-    sprintf(save_path, "%s/%s/", save_dir, dirname);
+    sprintf(save_path, "%s/%s_%s/", save_dir, EXEC, dirname);
 
     // create directory
     ret = mkdir(save_path, 0755);
