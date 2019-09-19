@@ -5,14 +5,19 @@
 #  -Wall turns on most, but not all, compiler warnings
 #
 # for C++ define  CC = g++
-CC = gcc
-CFLAGS  = -g -Wall -lm
-TARGET = 1612340
-OBJ = main.o url_parser.o header_parser.o
-URL_PRS_PATH = ./module/parse_url/
-HD_PRS_PATH = ./module/parse_response_header/
-BIN_PATH = ./bin/
-OBJ_PATH = ./object/
+CC := gcc
+CFLAGS  := -g -Wall -lm
+TARGET := 1612340
+OBJ := main.o url_parser.o header_parser.o
+
+# abs path of makefile
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+MKFILE_DIR := $(dir $(MKFILE_PATH))
+
+URL_PRS_PATH := $(MKFILE_DIR)module/parse_url
+HD_PRS_PATH := $(MKFILE_DIR)module/parse_response_header
+BIN_PATH := $(MKFILE_DIR)bin
+OBJ_PATH := $(MKFILE_DIR)object
 
 all: $(TARGET)
 
