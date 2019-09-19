@@ -29,7 +29,7 @@ void error_handler(char *message);
 void get_URL_info(sockaddr_in *addr, url_info *info);
 int check_is_file(char *path);
 void ParseHref(char *f1, char *f2);
-int download_file(sockaddr_in *addr, char *save_dir, url_info *info);
+int download_file(sockaddr_in *addr, char *save_path, url_info *info);
 int download_dir(sockaddr_in *addr, char *save_dir, url_info *info);
 int progress_bar(char *name, unsigned long cbyte, unsigned long totalbyte,
                  int time);
@@ -60,7 +60,13 @@ int main(int argc, char const *argv[])
         realpath(argv[0], NULL)); // get abs directory of executable file
 
     if (check_is_file(info->path))
-        download_file(addr, exec_dir, info);
+    {
+        // get path same level with executable file to save
+        char save_path[PATH_MAX]; // use this path to save downloaded file
+        char *filename = basename(strcpy((char *)malloc(PATH_MAX), info->path));
+        sprintf(save_path, "%s/%s_%s", exec_dir, EXEC, filename);
+        download_file(addr, save_path, info);
+    }
     else
         download_dir(addr, exec_dir, info);
 
@@ -132,16 +138,12 @@ void ParseHref(char *f1, char *f2)
     fclose(fdes);
 }
 
-int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
+int download_file(sockaddr_in *addr, char *save_path, url_info *info)
 {
     int ret;
     char buffer[BUFFSZ];
     memset(buffer, '\0', BUFFSZ);
-
-    // get path same level with executable file to save
-    char save_path[PATH_MAX]; // use this path to save downloaded file
     char *filename = basename(strcpy((char *)malloc(PATH_MAX), info->path));
-    sprintf(save_path, "%s/%s_%s", save_dir, EXEC, filename);
 
     // send request headers to server
     snprintf(buffer, BUFFSZ,
@@ -311,7 +313,9 @@ int download_dir(sockaddr_in *addr, char *save_dir, url_info *info)
         memcpy((char *)&newinfo, (char *)info, sizeof(newinfo));
         strcat(newinfo.path, name); // append name to path of url
         // download each file
-        download_file(addr, save_path, &newinfo);
+        char filepath[PATH_MAX];
+        strcpy(filepath, save_path);
+        download_file(addr, strcat(filepath, name), &newinfo);
     }
     fclose(fdes);
     // remove file
@@ -377,7 +381,7 @@ void clean_progressbar(int pchar)
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
-    printf("%c[J", 27);      // clear screen from cursor down
+    printf("%c[J", 27); // clear screen from cursor down
 
     int line = floor(pchar * 1.0 / w.ws_col);
     for (int i = 0; i < line; i++)
