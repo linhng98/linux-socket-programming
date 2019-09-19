@@ -193,13 +193,12 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
 
     time_t start, end;
     time(&start);
-    printf("%ld\n", flen);
     while ((ret = recv(sockfd, buffer, BUFFSZ, 0)) > 0)
     {
         // handle error
         if (ret < 0)
             printf("%s", strerror(errno));
-            
+
         // server send some error message
         if (ret + bytes_recv > flen)
             ret = fwrite(buffer, 1, flen - bytes_recv, fn);
@@ -215,7 +214,6 @@ int download_file(sockaddr_in *addr, char *save_dir, url_info *info)
             break;
     }
     printf("\n");
-    printf("%ld\n", bytes_recv);
     fclose(fn);
 
     // get the rest useless message (if have)
