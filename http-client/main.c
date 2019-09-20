@@ -148,7 +148,7 @@ int download_file(sockaddr_in *addr, char *save_path, url_info *info)
     // send request headers to server
     snprintf(buffer, BUFFSZ,
              "GET /%s HTTP/1.0\r\n"
-             "HOST: %s\r\n"
+             "Host: %s\r\n"
              "\r\n",
              info->path, info->host);
 
@@ -212,8 +212,6 @@ int download_file(sockaddr_in *addr, char *save_path, url_info *info)
         clean_progressbar(printed_char);
         printed_char =
             progress_bar(filename, bytes_recv, flen, difftime(end, start));
-        if (bytes_recv == flen)
-            break;
     }
     printf("\n");
 
