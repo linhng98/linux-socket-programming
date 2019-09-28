@@ -70,7 +70,7 @@ $ make
 ```
 - Download directory
 ```Bash
-$ ./1612340 <span>http://students.iitk.ac.in/programmingclub/course/lectures/
+$ ./1612340 http://students.iitk.ac.in/programmingclub/course/lectures/
 ```
 - Download file
 ```Bash
