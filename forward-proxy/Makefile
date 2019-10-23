@@ -12,7 +12,7 @@ BIN_PATH := ./bin
 
 all: $(TARGET)
 
-$(TARGET): proxy.c
+proxy: proxy.c
 	$(CC) $(CFLAGS) proxy.c -o $(BIN_PATH)/$@
 
 clean:

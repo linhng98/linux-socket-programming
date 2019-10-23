@@ -63,7 +63,7 @@ int main()
     while (1)
     {
         ret = poll(fds, MAX_CLIENT, POLL_TIMEOUT);
-        fflush(stdout);
+
         if (ret < 0) // error happen, terminate program
             error_handler("poll function fail");
         else if (ret == 0) // timeout, continue poll again
