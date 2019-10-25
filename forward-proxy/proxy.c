@@ -4,6 +4,7 @@
 #include <linux/limits.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h> // signal handler
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,9 +13,8 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h> // for close
+#include <unistd.h> // for close file
 
-#define PORT 8080
 #define MAX_HOSTLEN 255
 #define MAX_HEADER_SIZE 4096
 #define BUFFSIZE 2048
@@ -42,27 +42,49 @@ typedef struct
     char http_header[MAX_HEADER_SIZE];
 } http_message_header;
 
+static int reaped_child_process = 0;
+static int num_req = 0;
+
+static void sig_INT_handler(int signum);
+static void sig_USR1_handler(int signum);
+static void sig_USR2_handler(int signum);
 static int count_sub_string(const char *a, const char *b);
 static void parse_url(url_info *info, const char *full_url);
 static int recv_headers(http_message_header *head, int sfd);
-void get_URL_info(sockaddr_in *addr, url_info *info);
-int check_valid_request(url_info *info, http_message_header *head);
-void get_http_method(char *method, http_message_header *head);
-int check_valid_hostname(char *host);
+static void get_URL_info(sockaddr_in *addr, url_info *info);
+static int check_valid_request(url_info *info, http_message_header *head);
+static void get_http_method(char *method, http_message_header *head);
 
 int main(int argc, char const *argv[])
 {
+    signal(SIGINT, sig_INT_handler);
+    signal(SIGUSR1, sig_USR1_handler);
+    signal(SIGUSR2, sig_USR2_handler);
+
     int sockfd, len;
     sockaddr_in servaddr, cli;
     pid_t child;
     pollfd fds[1];
+
+    if (argc < 2) // missing argv
+    {
+        printf("Usage: %s portnumber\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    long port = strtol(argv[1], NULL, 10);
+    if (port <= 0 || port > 65535)
+    {
+        printf("invalid port number!!");
+        exit(EXIT_FAILURE);
+    }
 
     // socket create and verification
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1)
     {
         printf("socket creation failed...\n");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     else
         printf("Socket successfully created..\n");
@@ -71,13 +93,13 @@ int main(int argc, char const *argv[])
     // assign IP, PORT
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(PORT);
+    servaddr.sin_port = htons(port);
 
     // Binding newly created socket to given IP and verification
     if ((bind(sockfd, (sockaddr *)&servaddr, sizeof(servaddr))) != 0)
     {
         printf("socket bind failed...\n");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     else
         printf("Socket successfully binded..\n");
@@ -86,7 +108,7 @@ int main(int argc, char const *argv[])
     if ((listen(sockfd, 0)) != 0)
     {
         printf("Listen failed...\n");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     else
         printf("Server listening..\n");
@@ -99,10 +121,14 @@ int main(int argc, char const *argv[])
     while (1)
     {
         int pid;
-        do // loop to reap zombie process (if exist)
+        while (1) // loop to reap zombie process (if exist)
         {
             pid = waitpid(-1, NULL, WNOHANG);
-        } while (pid > 0);
+            if (pid > 0)
+                reaped_child_process++;
+            else
+                break;
+        }
 
         if (poll(fds, 1, POLL_TIMEOUT) == 0) // no new event coming
             continue;
@@ -120,6 +146,11 @@ int main(int argc, char const *argv[])
         }
         else if (child == 0) // in child process zone, do something
         {
+            signal(SIGINT, SIG_IGN);
+            signal(SIGUSR1, SIG_IGN);
+            signal(SIGUSR2, SIG_IGN);
+            setpgid(0, 0); // prevent receive signal from parent (same process group id)
+
             int ret; // use to store returned value
 
             timeval tv = {5, 0};
@@ -130,7 +161,7 @@ int main(int argc, char const *argv[])
             if (recv_headers(&heads, connfd) < 0)
             {
                 send(connfd, CODE_403, strlen(CODE_403), 0);
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
 
             // parse url from headers
@@ -142,7 +173,7 @@ int main(int argc, char const *argv[])
             if (check_valid_request(&info, &heads) < 0) // invalid request
             {
                 send(connfd, CODE_403, strlen(CODE_403), 0);
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
 
             // create hostaddr and connect
@@ -152,13 +183,13 @@ int main(int argc, char const *argv[])
             if (clifd == -1)
             {
                 printf("socket creation failed...\n");
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
 
             if (connect(clifd, (sockaddr *)&hostaddr, sizeof(hostaddr)) < 0)
             {
                 printf("connection failed\n");
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
 
             char req_head[300 + MAX_HEADER_SIZE];
@@ -167,7 +198,7 @@ int main(int argc, char const *argv[])
             if (send(clifd, req_head, strlen(req_head), 0) < 0)
             {
                 printf("send headers failed\n");
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
 
             char buff[BUFFSIZE];
@@ -190,13 +221,45 @@ int main(int argc, char const *argv[])
             close(clifd);
             close(connfd);
 
-            exit(0); // exit child process
+            exit(EXIT_SUCCESS); // exit child process
         }
         else // in parent process, close socket
+        {
+            num_req++;
             close(connfd);
+        }
     }
     close(sockfd);
-    return 0;
+    exit(EXIT_SUCCESS);
+}
+
+static void sig_INT_handler(int signum)
+{
+    if (signum == SIGINT)
+    {
+        printf("Can't be terminated using ctrl-C\n");
+        signal(SIGINT, sig_INT_handler); // reset signal handler
+    }
+}
+
+static void sig_USR1_handler(int signum)
+{
+    if (signum == SIGUSR1)
+    {
+        printf("Received SIGUSR1...reporting status:\n"
+               "-- Processed %d requests\n"
+               "-- Reaped %d child process\n",
+               num_req, reaped_child_process);
+    }
+}
+
+static void sig_USR2_handler(int signum)
+{
+    if (signum == SIGUSR2)
+    {
+        printf("received SIGUSR2, terminating....\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 int count_sub_string(const char *a, const char *b)
@@ -306,11 +369,6 @@ int check_valid_request(url_info *info, http_message_header *head)
         return -1;
     }
 
-    if (check_valid_hostname(info->host) < 0)
-    {
-        printf("(invalid host name !!!)\n");
-        return -1;
-    }
     return 0;
 }
 
@@ -319,16 +377,4 @@ void get_http_method(char *method, http_message_header *head)
     char tmp[300];
     strcpy(tmp, head->startline);
     strcpy(method, strtok(tmp, " "));
-}
-
-int check_valid_hostname(char *host)
-{
-    int count = 0;
-    for (int i = 0; i < strlen(host); i++)
-        if (host[i] == '.')
-            count++;
-
-    if (count <= 1)
-        return -1;
-    return 0;
 }
