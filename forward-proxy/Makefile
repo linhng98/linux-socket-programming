@@ -7,12 +7,12 @@
 # for C++ define  CC = g++
 CC := gcc
 CFLAGS  := -g -Wall -lm
-TARGET := proxy
+TARGET := 1612340
 BIN_PATH := ./bin
 
 all: $(TARGET)
 
-proxy: proxy.c
+1612340: proxy.c
 	$(CC) $(CFLAGS) proxy.c -o $(BIN_PATH)/$@
 
 clean:

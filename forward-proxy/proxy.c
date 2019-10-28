@@ -146,9 +146,11 @@ int main(int argc, char const *argv[])
         }
         else if (child == 0) // in child process zone, do something
         {
+            // ignore signal from outside
             signal(SIGINT, SIG_IGN);
             signal(SIGUSR1, SIG_IGN);
             signal(SIGUSR2, SIG_IGN);
+
             setpgid(0, 0); // prevent receive signal from parent (same process group id)
 
             int ret; // use to store returned value
@@ -159,10 +161,7 @@ int main(int argc, char const *argv[])
             // get headers http from client
             http_message_header heads;
             if (recv_headers(&heads, connfd) < 0)
-            {
-                send(connfd, CODE_403, strlen(CODE_403), 0);
                 exit(EXIT_FAILURE);
-            }
 
             // parse url from headers
             char url[300];
@@ -206,14 +205,14 @@ int main(int argc, char const *argv[])
             {
                 char c;
                 if (recv(connfd, &c, 1, MSG_PEEK | MSG_DONTWAIT) == 0) // client disconnected
-                    break;
+                    exit(EXIT_SUCCESS);
 
                 ret = recv(clifd, buff, BUFFSIZE, MSG_DONTWAIT); // set nonblocking
                 if (ret < 0)                                     // message still not arrive
                     continue;
 
                 if (send(connfd, buff, ret, 0) == 0) // client disconnected
-                    break;
+                    exit(EXIT_SUCCESS);
 
                 memset(buff, '\0', ret);
             }
