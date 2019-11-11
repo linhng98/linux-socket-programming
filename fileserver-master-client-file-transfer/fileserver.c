@@ -16,12 +16,12 @@
 #define BUFFSIZE 1024
 #define BACKLOG 128 // maximum queue incoming connection
 #define MAX_PATH_LEN 4096
-#define USAGE "Usage: fileserver [-i <IP>] [-m [PORT]] [-p <PORT>] -d <DIR>\n"
+#define USAGE "Usage: fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>\n"
 #define VERSION                                                                                    \
     "fileserver v1.0.0\n"                                                                          \
     "Written by Linh, Khue, Tin, Cuong\n"
 #define HELP                                                                                       \
-    "fileserver [-i <IP>] [-m [PORT]] [-p <PORT>] -d <DIR>\n"                                      \
+    "fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>\n"                                      \
     "allow client download file in storage directory \n"                                           \
     "\n"                                                                                           \
     "-i, --master-ip    master server ip (default 127.0.0.1)\n"                                    \
@@ -162,7 +162,7 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr, socklen_t *addrlen)
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-
+    setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
     // Filling server information
     servaddr->sin_family = AF_INET; // IPv4
     servaddr->sin_addr.s_addr = INADDR_ANY;
@@ -200,14 +200,14 @@ void *thread_serv_client(void *params)
     if (receive_line_data(buffer, clisock) < 0) // receive command
         goto END_THREAD;
     if (strcmp(buffer, ping) == 0) // master ping check state
-    {
         send(clisock, ok, strlen(ok), 0);
-    }
     else if (strcmp(buffer, get_req) == 0)
     {
+        receive_line_data(buffer, clisock); // receive filename
+        buffer[strlen(buffer) - 1] = '\0';
         char path[BUFFSIZE * 2];
         sprintf(path, "%s/%s", storage_dir, buffer);
-        printf("%s\n", path);
+        printf("GET %s\n", path);
 
         if (is_file(path) != 0) // is file
         {
@@ -230,7 +230,7 @@ END_THREAD:
     pthread_exit(NULL);
 }
 
-static void *thread_sync_master()
+void *thread_sync_master()
 {
     pthread_detach(pthread_self());
 
@@ -257,7 +257,6 @@ static void *thread_sync_master()
             "%d\r\n"
             "%d\r\n",
             ip, listen_port, get_number_of_file(storage_dir));
-    printf("%s", buffer);
     send(sock, buffer, strlen(buffer), 0);
 
     // send filename

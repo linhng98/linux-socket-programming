@@ -14,6 +14,7 @@
 
 #define BUFFSIZE 1024
 #define MAX_PATH_LEN 4096
+#define MAX_FILENAME_LEN 255
 #define USAGE "Usage: client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...\n"
 #define VERSION                                                                                    \
     "client v1.0.0\n"                                                                              \
@@ -35,15 +36,18 @@
 
 typedef struct
 {
-    int sock;
+    char ipaddr[16];
+    int port;
     char *filename;
-} thread_df_params;
+} fs_info;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
 
-static void init_connection(int *sock, sockaddr_in *servaddr);
+static int init_connection(int *sock, sockaddr_in *servaddr);
 static void *thread_download_file(void *params);
-int is_dir(char *path);
+static void get_fileserver_info(fs_info *list_fs, int argc, char *argv[]);
+static int is_dir(char *path);
+static int receive_line_data(char *buffer, int sock);
 
 static struct option long_options[] = {
     {"host-ip", required_argument, 0, 'i'}, {"port", required_argument, 0, 'p'},
@@ -104,29 +108,24 @@ int main(int argc, char *argv[])
     }
 
     int num_conn = argc - optind; // num of filename equal to num connection
-    sockaddr_in servaddr;
-    servaddr.sin_addr.s_addr = inet_addr(master_ip);
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(master_port);
 
     // store list connect socket
     int *clisock = (int *)malloc(sizeof(int) * num_conn);
     // store list thread id
     pthread_t *clithread = (pthread_t *)malloc(sizeof(pthread_t) * num_conn);
     // store list params for each thread
-    thread_df_params *t_params = (thread_df_params *)malloc(sizeof(thread_df_params) * num_conn);
+    fs_info *list_fs = (fs_info *)malloc(sizeof(fs_info) * num_conn);
+    get_fileserver_info(list_fs, argc, argv);
 
-    printf("HOST: %s\nIP: %d\nPATH: %s\n", master_ip, master_port, outdir);
     // create new thread for each connection
     int count = 0;
-    for (int i = optind; i < argc; i++) // retrieve the rest filename
+    for (int i = optind; i < argc; i++) // create new thread for each fileserver
     {
-        init_connection(&clisock[count], &servaddr);
-
-        t_params[count].sock = clisock[count];
-        t_params[count].filename = argv[i];
-
-        pthread_create(&clithread[count], NULL, thread_download_file, &t_params[count]);
+        if (list_fs[count].port > 0) // check this fileserver valid
+            printf("GET %s FROM [%s %d]\n", list_fs[count].filename, list_fs[count].ipaddr, list_fs[count].port);
+        else
+            printf("GET %s [FILE NOT FOUND]\n",list_fs[count].filename);
+        pthread_create(&clithread[count], NULL, thread_download_file, &list_fs[count]);
         count++;
     }
 
@@ -136,34 +135,44 @@ int main(int argc, char *argv[])
 
     free(clisock);
     free(clithread);
-    free(t_params);
+    free(list_fs);
     exit(EXIT_SUCCESS);
 }
 
-void init_connection(int *sock, sockaddr_in *servaddr)
+int init_connection(int *sock, sockaddr_in *servaddr)
 {
     *sock = socket(AF_INET, SOCK_STREAM, 0);
     if (*sock < 0)
     {
         perror("can not create new socket\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     if (connect(*sock, (sockaddr *)servaddr, sizeof(*servaddr)) != 0)
     {
         perror("can not connect to server\n");
-        exit(EXIT_FAILURE);
+        return -2;
     }
+    return 0;
 }
 
 void *thread_download_file(void *params)
 {
-    thread_df_params *info = (thread_df_params *)params;
+    fs_info *info = (fs_info *)params;
     int ret;
+    int sock;
+    char *command = "GET\r\n";
     char buffer[BUFFSIZE];
     memset(buffer, '\0', BUFFSIZE);
+    sockaddr_in fs_addr;
+    fs_addr.sin_family = AF_INET;
+    fs_addr.sin_addr.s_addr = inet_addr(info->ipaddr);
+    fs_addr.sin_port = htons(info->port);
 
-    send(info->sock, info->filename, strlen(info->filename), 0);
+    init_connection(&sock, &fs_addr);
+    send(sock, command, strlen(command), 0);               // send command
+    send(sock, info->filename, strlen(info->filename), 0); // send filename
+    send(sock, "\n", 1, 0);
 
     char outpath[MAX_PATH_LEN];
     sprintf(outpath, "%s/%s", outdir, info->filename);
@@ -171,15 +180,61 @@ void *thread_download_file(void *params)
     FILE *wfile = fopen(outpath, "wb");
     while (1)
     {
-        ret = recv(info->sock, buffer, BUFFSIZE, 0);
+        ret = recv(sock, buffer, BUFFSIZE, 0);
         if (ret <= 0) // error or peer closed
             break;
         fwrite(buffer, 1, ret, wfile);
     }
 
     fclose(wfile);
-    close(info->sock);
+    close(sock);
     pthread_exit(NULL);
+}
+
+void get_fileserver_info(fs_info *list_fs, int argc, char *argv[])
+{
+    int sock;
+    sockaddr_in maddr;
+    char *command = "INFO\r\n";
+    char *fnf = "FILE NOT FOUND\r\n";
+    int count = 0;
+    char buffer[MAX_FILENAME_LEN];
+    maddr.sin_addr.s_addr = inet_addr(master_ip);
+    maddr.sin_family = AF_INET;
+    maddr.sin_port = htons(master_port);
+
+    // connect to master server
+    init_connection(&sock, &maddr);
+    // send command to master server
+    send(sock, command, strlen(command), 0);
+    // send all filename to master server
+
+    for (int i = optind; i < argc; i++)
+    {
+        // link filename to fs_info, then send to master
+        list_fs[count].filename = argv[i];
+        sprintf(buffer, "%s\n", argv[i]);
+        send(sock, buffer, strlen(buffer), 0);
+        count++;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        receive_line_data(buffer, sock);
+        if (strcmp(buffer, fnf) == 0) // file not found
+            list_fs[i].port = -1;
+        else
+        {
+            buffer[strlen(buffer) - 1] = '\0'; // remove \n char
+
+            char *token = strtok(buffer, " "); // split ip and port
+            strcpy(list_fs[i].ipaddr, token);
+            token = strtok(NULL, " ");
+            list_fs[i].port = (int)strtol(token, NULL, 10);
+        }
+    }
+
+    close(sock);
 }
 
 int is_dir(char *path)
@@ -187,4 +242,21 @@ int is_dir(char *path)
     struct stat path_stat;
     stat(path, &path_stat);
     return S_ISDIR(path_stat.st_mode);
+}
+
+int receive_line_data(char *buffer, int sock)
+{
+    int count = 0;
+    while (1)
+    {
+        if (recv(sock, &buffer[count], 1, 0) <= 0)
+            return -1;
+
+        if (buffer[count] == '\n')
+            break;
+
+        count++;
+    }
+    buffer[count + 1] = '\0';
+    return 0;
 }

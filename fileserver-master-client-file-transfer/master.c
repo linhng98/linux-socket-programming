@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    // close(sockfd);
+    close(sockfd);
     exit(EXIT_SUCCESS);
 }
 
@@ -220,7 +220,7 @@ void init_server_socket(int *sockfd, sockaddr_in *addr, socklen_t *addrlen)
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-
+    setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
     // Filling server information
     addr->sin_family = AF_INET; // IPv4
     addr->sin_addr.s_addr = INADDR_ANY;
@@ -297,12 +297,14 @@ void *thread_serv_request(void *fd)
          */
 
         node_fs *fs;
+        printf("RECEIVED INFO REQUEST FROM CLIENT [");
         while (1)
         {
             if (receive_line_data(buffer, sock) < 0)
-                goto END_THREAD;
+                break;
 
             buffer[strlen(buffer) - 1] = '\0';
+            printf(" %s", buffer);            // printf filename to screen;
             fs = get_fileserver_info(buffer); // search which fileserver is holding this file
             if (fs == NULL)                   // file not found
                 send(sock, fnf, strlen(fnf), 0);
@@ -313,6 +315,7 @@ void *thread_serv_request(void *fd)
                 send(sock, fs_info, strlen(fs_info), 0);
             }
         }
+        printf(" ]\n");
     }
     else if (target == 2)
     {
@@ -340,7 +343,7 @@ void *thread_serv_request(void *fd)
             goto END_THREAD;
         buffer[strlen(buffer) - 2] = '\0';
         fs_port = (int)strtol(buffer, NULL, 10);
-        printf("SYNC %s %d ", fs_ip, fs_port);
+        printf("RECEIVED SYNC REQUEST FROM [%s %d] ", fs_ip, fs_port);
 
         // get number of filename
         if (receive_line_data(buffer, sock) < 0)
@@ -374,7 +377,7 @@ void *thread_serv_request(void *fd)
     }
 
 END_THREAD:
-    // close(sock);
+    close(sock);
     free(fd);
     pthread_exit(NULL);
 }
@@ -436,11 +439,11 @@ void *thread_check_connecting_fileserver()
             }
             else // connect fail, delete fileserver from list and master dir
             {
-                printf("remove fileserver %s port %d\n", temp->ipaddr, temp->port);
+                printf("REMOVE FILESERVER [%s %d]\n", temp->ipaddr, temp->port);
                 remove_fileserver(temp);
                 printf("connecting fileserver: %d\n", count_fs);
             }
-            // close(sock);
+            close(sock);
         }
         sleep(3); // sleep 5 second after check
     }
