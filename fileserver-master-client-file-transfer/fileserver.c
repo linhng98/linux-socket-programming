@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BUFFSIZE 1024
+#define BUFFSIZE 512
 #define BACKLOG 128 // maximum queue incoming connection
 #define MAX_PATH_LEN 4096
 #define USAGE "Usage: fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>\n"
@@ -42,6 +42,7 @@ static int get_number_of_file(char *dir);
 static void get_host_ip(char *ipaddr);
 static int check_directory(char *dirname);
 static int receive_line_data(char *buffer, int sock);
+static unsigned long get_file_size(char *filename);
 
 static struct option long_options[] = {{"master-ip", required_argument, 0, 'i'},
                                        {"master-port", required_argument, 0, 'm'},
@@ -121,17 +122,18 @@ int main(int argc, char *argv[])
     if (storage_dir[strlen(argv[1]) - 1] == '/') // strip off dash character
         storage_dir[strlen(argv[1]) - 1] = '\0';
 
+    int sockfd;
+    sockaddr_in servaddr;
+    socklen_t addrlen = sizeof(servaddr);
+    init_server_socket(&sockfd, &servaddr, &addrlen);
+
     pthread_t sync_thread; // this thread sync fileserver with master server
     if (pthread_create(&sync_thread, NULL, &thread_sync_master, NULL) != 0)
     {
         perror("create new thread failed"); // create new thread fail
         exit(EXIT_FAILURE);
     }
-
-    int sockfd;
-    sockaddr_in servaddr;
-    socklen_t addrlen = sizeof(servaddr);
-    init_server_socket(&sockfd, &servaddr, &addrlen);
+    pthread_join(sync_thread, NULL);
 
     while (1)
     {
@@ -162,7 +164,6 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr, socklen_t *addrlen)
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-    setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
     // Filling server information
     servaddr->sin_family = AF_INET; // IPv4
     servaddr->sin_addr.s_addr = INADDR_ANY;
@@ -199,11 +200,16 @@ void *thread_serv_client(void *params)
 
     if (receive_line_data(buffer, clisock) < 0) // receive command
         goto END_THREAD;
+
     if (strcmp(buffer, ping) == 0) // master ping check state
-        send(clisock, ok, strlen(ok), 0);
+    {
+        if (send(clisock, ok, strlen(ok), 0) <= 0)
+            goto END_THREAD;
+    }
     else if (strcmp(buffer, get_req) == 0)
     {
-        receive_line_data(buffer, clisock); // receive filename
+        if (receive_line_data(buffer, clisock) < 0) // receive filename
+            goto END_THREAD;
         buffer[strlen(buffer) - 1] = '\0';
         char path[BUFFSIZE * 2];
         sprintf(path, "%s/%s", storage_dir, buffer);
@@ -211,13 +217,19 @@ void *thread_serv_client(void *params)
 
         if (is_file(path) != 0) // is file
         {
+            // send file size
+            sprintf(buffer, "%lu\r\n", get_file_size(path));
+            if (send(clisock, buffer, strlen(buffer), 0) <= 0)
+                goto END_THREAD;
+            // send data file
             FILE *rfile = fopen(path, "rb");
             while (1)
             {
                 ret = fread(buffer, 1, BUFFSIZE, rfile);
                 if (ret <= 0) // error or EOF
                     break;
-                send(clisock, buffer, ret, 0);
+                if (send(clisock, buffer, ret, 0) <= 0)
+                    goto END_THREAD;
             }
             fclose(rfile);
         }
@@ -232,8 +244,6 @@ END_THREAD:
 
 void *thread_sync_master()
 {
-    pthread_detach(pthread_self());
-
     int sock;
     sockaddr_in masaddr;
     char buffer[BUFFSIZE];
@@ -241,12 +251,17 @@ void *thread_sync_master()
     masaddr.sin_family = AF_INET;
     masaddr.sin_port = htons(master_port);
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0)
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
         perror("can not create new socket");
+        exit(EXIT_FAILURE);
+    }
 
     if (connect(sock, (sockaddr *)&masaddr, sizeof(masaddr)) != 0)
+    {
         perror("can not connect to server");
+        exit(EXIT_FAILURE);
+    }
 
     // send header
     char ip[20];
@@ -257,7 +272,8 @@ void *thread_sync_master()
             "%d\r\n"
             "%d\r\n",
             ip, listen_port, get_number_of_file(storage_dir));
-    send(sock, buffer, strlen(buffer), 0);
+    if (send(sock, buffer, strlen(buffer), 0) <= 0)
+        exit(EXIT_FAILURE);
 
     // send filename
     DIR *d;
@@ -270,22 +286,25 @@ void *thread_sync_master()
             sprintf(buffer, "%s/%s", storage_dir, dir->d_name);
             if (is_file(buffer) != 0)
             {
-                send(sock, dir->d_name, strlen(dir->d_name), 0);
-                send(sock, "\n", 1, 0);
+                if (send(sock, dir->d_name, strlen(dir->d_name), 0) <= 0)
+                    exit(EXIT_FAILURE);
+                if (send(sock, "\n", 1, 0) <= 0)
+                    exit(EXIT_FAILURE);
             }
         }
         closedir(d);
     }
 
     // recv ok respond
-    memset(buffer, '\0', BUFFSIZE);
-    recv(sock, buffer, BUFFSIZE, 0);
+    receive_line_data(buffer, sock);
+
     if (strcmp(buffer, "OK\r\n") != 0)
     {
         printf("sync to master failed\n");
         exit(EXIT_FAILURE);
     }
     printf("sync to master success\n");
+
     close(sock);
     pthread_exit(NULL);
 }
@@ -377,4 +396,11 @@ int receive_line_data(char *buffer, int sock)
     }
     buffer[count + 1] = '\0';
     return 0;
+}
+
+unsigned long get_file_size(char *filename)
+{
+    struct stat st;
+    stat(filename, &st);
+    return st.st_size;
 }

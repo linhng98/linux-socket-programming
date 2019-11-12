@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -12,7 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BUFFSIZE 1024
+#define BUFFSIZE 512
 #define MAX_PATH_LEN 4096
 #define MAX_FILENAME_LEN 255
 #define USAGE "Usage: client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...\n"
@@ -36,10 +37,18 @@
 
 typedef struct
 {
+    int downloading_flag;
+    int percent;
+} progress_status;
+
+typedef struct
+{
+    progress_status sts; // use to track downloading status
     char ipaddr[16];
-    int port;
-    char *filename;
+    int port;       // > 0 mean fileserver exist, -1 mean fileserver holding file not found
+    char *filename; // filename which fs is holding
 } fs_info;
+
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
 
@@ -48,6 +57,7 @@ static void *thread_download_file(void *params);
 static void get_fileserver_info(fs_info *list_fs, int argc, char *argv[]);
 static int is_dir(char *path);
 static int receive_line_data(char *buffer, int sock);
+static void print_progress_bar(fs_info *list_fs, int num_conn);
 
 static struct option long_options[] = {
     {"host-ip", required_argument, 0, 'i'}, {"port", required_argument, 0, 'p'},
@@ -56,7 +66,6 @@ static struct option long_options[] = {
 static char *master_ip = "127.0.0.1"; // default master ip
 static int master_port = 55555;       // default master port
 static char *outdir = ".";            // default out path
-static int download_status = -1;      // incomplete download process flag
 
 int main(int argc, char *argv[])
 {
@@ -115,6 +124,13 @@ int main(int argc, char *argv[])
     pthread_t *clithread = (pthread_t *)malloc(sizeof(pthread_t) * num_conn);
     // store list params for each thread
     fs_info *list_fs = (fs_info *)malloc(sizeof(fs_info) * num_conn);
+    // init list file server
+    for (int i = 0; i < num_conn; i++)
+    {
+        list_fs[i].port = -1; // fileserver not exist
+        list_fs[i].sts.downloading_flag = 0;
+        list_fs[i].sts.percent = 0;
+    }
     get_fileserver_info(list_fs, argc, argv);
 
     // create new thread for each connection
@@ -122,16 +138,24 @@ int main(int argc, char *argv[])
     for (int i = optind; i < argc; i++) // create new thread for each fileserver
     {
         if (list_fs[count].port > 0) // check this fileserver valid
-            printf("GET %s FROM [%s %d]\n", list_fs[count].filename, list_fs[count].ipaddr, list_fs[count].port);
+        {
+            printf("GET %s FROM [%s %d]\n", list_fs[count].filename, list_fs[count].ipaddr,
+                   list_fs[count].port);
+            pthread_create(&clithread[count], NULL, thread_download_file, &list_fs[count]);
+        }
         else
-            printf("GET %s [FILE NOT FOUND]\n",list_fs[count].filename);
-        pthread_create(&clithread[count], NULL, thread_download_file, &list_fs[count]);
+            printf("GET %s [FILE NOT FOUND]\n", list_fs[count].filename);
         count++;
     }
 
+    // print progress bar
+    // get width height of current terminal
+    sleep(1); // wait for all thread spawned
+    print_progress_bar(list_fs, num_conn);
+
     for (int i = 0; i < num_conn; i++)
-        pthread_join(clithread[i], NULL); // wait for all thread complete download
-    download_status = 0;                  // complete download
+        if (list_fs[i].port > 0)
+            pthread_join(clithread[i], NULL); // join all completed thread
 
     free(clisock);
     free(clithread);
@@ -159,6 +183,7 @@ int init_connection(int *sock, sockaddr_in *servaddr)
 void *thread_download_file(void *params)
 {
     fs_info *info = (fs_info *)params;
+    info->sts.downloading_flag = 1;
     int ret;
     int sock;
     char *command = "GET\r\n";
@@ -177,15 +202,24 @@ void *thread_download_file(void *params)
     char outpath[MAX_PATH_LEN];
     sprintf(outpath, "%s/%s", outdir, info->filename);
 
+    // get file size
+    receive_line_data(buffer, sock);
+    buffer[strlen(buffer) - 2] = '\0';
+    unsigned long filesize = strtol(buffer, NULL, 10);
+    unsigned long sum = 0;
+
     FILE *wfile = fopen(outpath, "wb");
     while (1)
     {
         ret = recv(sock, buffer, BUFFSIZE, 0);
         if (ret <= 0) // error or peer closed
             break;
+        sum += ret;
+        info->sts.percent = sum * 100 / filesize;
         fwrite(buffer, 1, ret, wfile);
     }
 
+    info->sts.downloading_flag = 0;
     fclose(wfile);
     close(sock);
     pthread_exit(NULL);
@@ -222,7 +256,7 @@ void get_fileserver_info(fs_info *list_fs, int argc, char *argv[])
     {
         receive_line_data(buffer, sock);
         if (strcmp(buffer, fnf) == 0) // file not found
-            list_fs[i].port = -1;
+            continue;
         else
         {
             buffer[strlen(buffer) - 1] = '\0'; // remove \n char
@@ -259,4 +293,39 @@ int receive_line_data(char *buffer, int sock)
     }
     buffer[count + 1] = '\0';
     return 0;
+}
+
+void print_progress_bar(fs_info *list_fs, int num_conn)
+{
+    struct winsize w;
+    int bar_len = 40;
+    int linelen = 20 + 20 + bar_len + 1 + 5; // %-20s%20[barlen] 100%
+    int down_line;
+    int brick;
+    int count;
+    while (1)
+    {
+        // get currently width size terminal
+        ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+        down_line = (linelen / w.ws_col + 1) * num_conn;
+        count = 0;
+
+        for (int i = 0; i < num_conn; i++)
+        {
+            if (list_fs[i].sts.downloading_flag == 0)
+                count++;
+            brick = bar_len * list_fs[i].sts.percent / 100;
+            printf("%-20s%20s", list_fs[i].filename, "[");
+            for (int i = 0; i < brick; i++)
+                printf("#");
+            for (int i = 0; i < bar_len - brick; i++)
+                printf("-");
+            printf("] %3d%%\r\n", list_fs[i].sts.percent);
+        }
+
+        if (count == num_conn) // all thread is completed download
+            break;
+        usleep(300);
+        printf("%c[%dA", 27, down_line); // move cursor up n line
+    }
 }

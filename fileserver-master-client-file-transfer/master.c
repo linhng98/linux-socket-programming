@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #define BACKLOG 128   // maximum queue incoming connection
-#define BUFFSIZE 1024 // size of buffer
+#define BUFFSIZE 512 // size of buffer
 #define MAX_PATH_LEN 4096
 #define MAX_FILENAME_LEN 255
 #define USAGE "Usage: master [-p <PORT>]\n"
@@ -445,7 +445,7 @@ void *thread_check_connecting_fileserver()
             }
             close(sock);
         }
-        sleep(3); // sleep 5 second after check
+        sleep(2); // sleep 2 second after ping again
     }
 
     pthread_exit(NULL);
