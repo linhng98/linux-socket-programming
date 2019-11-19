@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,7 +7,6 @@
 #include <sys/msg.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 
 #define MSG_SIZE 100
 #define PROJ_ID 69
@@ -42,12 +42,12 @@ int main()
 
     if (connect(sock, (sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     {
-        perror("connect to server fail");
+        perror("connect to netdsrv server fail");
         exit(EXIT_FAILURE);
     }
 
     // ftok to generate unique key
-    key = ftok("progfile", PROJ_ID);
+    key = ftok("./", PROJ_ID);
 
     // msgget creates a message queue
     // and returns identifier
@@ -57,7 +57,7 @@ int main()
     {
         // msgrcv to receive message
         msgrcv(msgid, &message, sizeof(message), 1, 0);
-        // display the message
+        printf("received message \"%s\" from server1\n", message.msg_text);
         if (send(sock, message.msg_text, strlen(message.msg_text), 0) < 0)
         {
             printf("netdsrv disconnected\n");

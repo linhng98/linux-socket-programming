@@ -31,12 +31,11 @@ int main()
     key_t key;
     int msgid;
     // ftok to generate unique key
-    key = ftok("progfile", PROJ_ID);
+    key = ftok("./", PROJ_ID);
 
     // msgget creates a message queue
     // and returns identifier
     msgid = msgget(key, 0666 | IPC_CREAT);
-    printf("%d\n", msgid);
     message.msg_type = 1;
 
     addr.sin_addr.s_addr = INADDR_ANY;
@@ -75,10 +74,10 @@ int main()
             }
             buffer[ret] = '\0';
 
-            printf("received %s from netdclient\n", buffer);
-            // strcpy(message.msg_text, buffer);
+            printf("received message \"%s\" from netdclient\n", buffer);
+            strcpy(message.msg_text, buffer);
             // msgsnd to send message
-            // msgsnd(msgid, &message, sizeof(message), 0);
+            msgsnd(msgid, &message, sizeof(message), 0);
         }
 
         close(clisock);

@@ -37,12 +37,13 @@ int main()
 
     printf("input: ");
     fgets(buffer, MSG_SIZE, stdin);
+    buffer[strlen(buffer) - 1] = '\0'; // remove \n character
 
     send(sock, buffer, strlen(buffer), 0);
 
     recv(sock, buffer, MSG_SIZE, 0);
 
-    printf("reply from server: %s", buffer);
+    printf("reply from server: %s\n", buffer);
 
     close(sock);
     exit(EXIT_SUCCESS);

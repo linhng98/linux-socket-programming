@@ -32,12 +32,11 @@ int main()
     key_t key;
     int msgid;
     // ftok to generate unique key
-    key = ftok("progfile", PROJ_ID);
+    key = ftok("./", PROJ_ID);
 
     // msgget creates a message queue
     // and returns identifier
     msgid = msgget(key, 0666 | IPC_CREAT);
-    printf("%d\n", msgid);
 
     message.msg_type = 1;
 
@@ -60,7 +59,7 @@ int main()
 
     if (listen(srvsock, 0) < 0)
     {
-        perror("listin fail");
+        perror("listen fail");
         exit(EXIT_FAILURE);
     }
 
@@ -76,7 +75,7 @@ int main()
         }
         buffer[ret] = '\0';
 
-        printf("new client connected: %s", buffer);
+        printf("new client connected: %s\n", buffer);
         strcpy(message.msg_text, buffer);
         // msgsnd to send message
         msgsnd(msgid, &message, sizeof(message), 0);
