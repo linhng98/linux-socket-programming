@@ -16,7 +16,7 @@
 #define BUFFSIZE 512
 #define MAX_PATH_LEN 4096
 #define MAX_FILENAME_LEN 255
-#define USAGE "Usage: client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...\n"
+#define USAGE "Usage: client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] [-l <LIST>] <FILE> ...\n"
 #define VERSION                                                                                    \
     "client v1.0.0\n"                                                                              \
     "Written by Linh, Khue, Tin, Cuong\n"
@@ -27,6 +27,7 @@
     "-i, --host-ip      host ip of master server (default 127.0.0.1)\n"                            \
     "-p, --port         listening port of master server (default 55555)\n"                         \
     "-o, --out-dir      out dir for downloaded file (default ./)\n"                                \
+    "-l, --list         list all file on master server\n"                                          \
     "-h, --help         display help message then exit\n"                                          \
     "-v, --version      output version information then exit\n"                                    \
     "\n"                                                                                           \
@@ -53,16 +54,20 @@ typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
 
 static int init_connection(int *sock, sockaddr_in *servaddr);
+static void list_all_file();
 static void *thread_download_file(void *params);
 static void get_fileserver_info(fs_info *list_fs, int argc, char *argv[]);
 static int is_dir(char *path);
 static int receive_line_data(char *buffer, int sock);
 static void print_progress_bar(fs_info *list_fs, int num_conn);
 
-static struct option long_options[] = {
-    {"host-ip", required_argument, 0, 'i'}, {"port", required_argument, 0, 'p'},
-    {"out-dir", required_argument, 0, 'o'}, {"help", no_argument, 0, 'h'},
-    {"version", no_argument, 0, 'v'},       {0, 0, 0, 0}};
+static struct option long_options[] = {{"host-ip", required_argument, 0, 'i'},
+                                       {"port", required_argument, 0, 'p'},
+                                       {"out-dir", required_argument, 0, 'o'},
+                                       {"list", no_argument, 0, 'l'},
+                                       {"help", no_argument, 0, 'h'},
+                                       {"version", no_argument, 0, 'v'},
+                                       {0, 0, 0, 0}};
 static char *master_ip = "127.0.0.1"; // default master ip
 static int master_port = 55555;       // default master port
 static char *outdir = ".";            // default out path
@@ -71,10 +76,11 @@ int main(int argc, char *argv[])
 {
     int c;
     int option_index;
+    int lflag = 0; // list file flag
 
     while (1) // loop to scan all argument
     {
-        c = getopt_long(argc, argv, "i:p:o:hv", long_options, &option_index);
+        c = getopt_long(argc, argv, "i:p:o:lhv", long_options, &option_index);
 
         if (c == -1) // end of options
             break;
@@ -96,6 +102,9 @@ int main(int argc, char *argv[])
             if (outdir[strlen(outdir) - 1] == '/') // strip off '/' character if exist
                 outdir[strlen(outdir) - 1] = '\0';
             break;
+        case 'l':
+            lflag = 1;
+            break;
         case 'h':
             printf(HELP);
             exit(EXIT_SUCCESS);
@@ -108,6 +117,12 @@ int main(int argc, char *argv[])
         default:
             abort();
         }
+    }
+
+    if (lflag == 1) // user want to list all file
+    {
+        list_all_file();
+        exit(EXIT_SUCCESS);
     }
 
     if (optind == argc) // filename argument is missing
@@ -178,6 +193,34 @@ int init_connection(int *sock, sockaddr_in *servaddr)
         return -2;
     }
     return 0;
+}
+
+void list_all_file()
+{
+    int ret;
+    int sock;
+    sockaddr_in maddr;
+    char buffer[BUFFSIZE];
+    char *command = "LIST\r\n";
+    maddr.sin_addr.s_addr = inet_addr(master_ip);
+    maddr.sin_family = AF_INET;
+    maddr.sin_port = htons(master_port);
+
+    // connect to master server
+    init_connection(&sock, &maddr);
+    // send command to master server
+    send(sock, command, strlen(command), 0);
+    // send all filename to master server
+
+    while (1)
+    {
+        if ((ret=recv(sock, buffer, BUFFSIZE, 0)) <= 0)
+            break;
+        buffer[ret]='\0';
+        printf("%s", buffer);
+    }
+
+    close(sock);
 }
 
 void *thread_download_file(void *params)

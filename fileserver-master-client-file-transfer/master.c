@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BACKLOG 128   // maximum queue incoming connection
+#define BACKLOG 128  // maximum queue incoming connection
 #define BUFFSIZE 512 // size of buffer
 #define MAX_PATH_LEN 4096
 #define MAX_FILENAME_LEN 255
@@ -58,6 +58,7 @@ static void delete_node_fileserver(node_fs *fs);
 static void remove_fileserver(node_fs *fs);
 static void create_new_fileserver(node_fs *fs);
 static int receive_line_data(char *buffer, int sock);
+static int is_file(char *path);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -266,6 +267,7 @@ void *thread_serv_request(void *fd)
     int target;
     char *fnf = "FILE NOT FOUND\r\n";
     char *ukn = "UNKNOW COMMAND\r\n";
+    char *empty = "LIST FILE IS EMPTY\r\n";
     char *fail = "FAIL\r\n";
     char *ok = "OK\r\n";
 
@@ -282,13 +284,15 @@ void *thread_serv_request(void *fd)
         target = 1;
     else if (strcmp(buffer, "SYNC\r\n") == 0) // fileserver sync
         target = 2;
+    else if (strcmp(buffer, "LIST\r\n") == 0) // client request list all file
+        target = 3;
     else // unknow request command
     {
         send(sock, ukn, strlen(ukn), 0);
         target = 0;
     }
 
-    if (target == 1) // serve client
+    if (target == 1) // serve client get request
     {
         /*
          *   To do: Loop to get all filename
@@ -317,7 +321,7 @@ void *thread_serv_request(void *fd)
         }
         printf(" ]\n");
     }
-    else if (target == 2)
+    else if (target == 2) // serve fileserver sync request
     {
         /*
          *   To do:
@@ -374,6 +378,48 @@ void *thread_serv_request(void *fd)
         send(sock, ok, strlen(ok), 0);
         printf("(SUCCESS)\n");
         printf("connecting fileserver: %d\n", count_fs);
+    }
+    else if (target == 3) // serve client list all fileserver request
+    {
+        char fileserver_dir[MAX_PATH_LEN];
+        char fpath[MAX_PATH_LEN * 2];
+        char buffer[MAX_PATH_LEN];
+
+        if (lfs.head == NULL) // list fileserver is empty
+        {
+            if (send(sock, empty, strlen(empty), 0) <= 0)
+                goto END_THREAD;
+        }
+        else
+        {
+            node_fs *temp = lfs.head;
+            while (temp != NULL) // get list fileserver directory
+            {
+                DIR *d;
+                struct dirent *dir;
+                sprintf(fileserver_dir, "%s/%s_%d", master_dir, temp->ipaddr, temp->port);
+                sprintf(buffer, "[%s %d]\r\n", temp->ipaddr, temp->port);
+                if (send(sock, buffer, strlen(buffer), 0) <= 0)
+                    goto END_THREAD;
+
+                d = opendir(fileserver_dir);
+                if (d)
+                {
+                    while ((dir = readdir(d)) != NULL)
+                    {
+                        sprintf(fpath, "%s/%s", fileserver_dir, dir->d_name);
+
+                        if (is_file(fpath) == 0) // not regular file
+                            continue;
+                        sprintf(buffer, "%s\n", dir->d_name);
+                        if (send(sock, buffer, strlen(buffer), 0) <= 0)
+                            goto END_THREAD;
+                    }
+                    closedir(d);
+                }
+                temp = temp->next_fs;
+            }
+        }
     }
 
 END_THREAD:
@@ -528,4 +574,11 @@ int receive_line_data(char *buffer, int sock)
     }
     buffer[count + 1] = '\0';
     return 0;
+}
+
+int is_file(char *path)
+{
+    struct stat path_stat;
+    stat(path, &path_stat);
+    return S_ISREG(path_stat.st_mode);
 }

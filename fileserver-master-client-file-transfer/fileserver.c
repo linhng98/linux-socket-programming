@@ -164,6 +164,7 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr, socklen_t *addrlen)
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
+    setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
     // Filling server information
     servaddr->sin_family = AF_INET; // IPv4
     servaddr->sin_addr.s_addr = INADDR_ANY;
@@ -215,7 +216,7 @@ void *thread_serv_client(void *params)
         sprintf(path, "%s/%s", storage_dir, buffer);
         printf("GET %s\n", path);
 
-        if (is_file(path) != 0) // is file
+        if (is_file(path) != 0) // is regular file
         {
             // send file size
             sprintf(buffer, "%lu\r\n", get_file_size(path));
