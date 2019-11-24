@@ -7,7 +7,7 @@ Thành viên nhóm
 | Đoàn Khuê | 1612311 |
 | Nguyễn Văn Linh | 1612340 |
 | Mai Chí Cường | 1612070 |
-| Phạm Tín | 16123 |
+| Phạm Trung Tín | 1612695 |
 
 - **Mục lục**
   - [1. Đánh giá chức năng đã hoàn thành](#1-%c4%90%c3%a1nh-gi%c3%a1-ch%e1%bb%a9c-n%c4%83ng-%c4%91%c3%a3-ho%c3%a0n-th%c3%a0nh)
@@ -32,30 +32,37 @@ Thành viên nhóm
 
 ### 1.1. Master server
 
-| Chức năng | Hoàn thành |
-| :-- | :-- |
-| Có địa chỉ IP:port cố định. Chứa thông tin về các file được chia sẻ bởi file server, thông tin IP:port của file server quản lý tương ứng. | 100% |
-| Cung cấp service (#1) để ghi nhận thông tin mà file server gửi lên gồm: danh sách các file, IP:port của file server. | 100% |
-| Cung cấp service (#2) để client có thể lấy thông tin danh sách các file được chia sẻ, kèm theo IP:port của file server quản lý file. | 100% |
-| Cho phép nhiều client, nhiều file server kết nối tới cùng một thời điểm. | 100% |
+| Chức năng | Hoàn thành | Ghi chú |
+| :-- | :-- | :-- |
+| Có địa chỉ IP:port cố định. Chứa thông tin về các file được chia sẻ bởi file server, thông tin IP:port của file server quản lý tương ứng. | ✅ |  |
+| Cung cấp service (#1) để ghi nhận thông tin mà file server gửi lên gồm: danh sách các file, IP:port của file server. | ✅ |  |
+| Cung cấp service (#2) để client có thể lấy thông tin danh sách các file được chia sẻ, kèm theo IP:port của file server quản lý file. | ✅ |  |
+| Cho phép nhiều client, nhiều file server kết nối tới cùng một thời điểm. | ✅ |  |
 
 ### 1.2. File server
 
-| Chức năng | Hoàn thành |
-| :-- | :-- |
-| Chứa các files có thể chia sẻ được với client. | 100% |
-| Khi file server khởi động, nó kết nối đến master server và gọi service (1) để gửi thông tin của chính nó lên file server gồm: danh sách file có thể chia sẻ, địa chỉ IP, port mà client có thể kết nối tới để tải file. | 100% |
-| Cung cấp service (#3) để client tải file với input là tên file cần tải. Service này sử dụng
-giao thức UDP tại tầng Transport. | 100% |
-| Cho phép nhiều client kết nối đến cùng một thời điểm. | 100% |
-| Khi file server ngừng hoạt động, master server cần loại bỏ danh sách file của file server tương ứng. | 100% |
+| Chức năng | Hoàn thành | Ghi chú |
+| :-- | :-- | :-- |
+| Chứa các files có thể chia sẻ được với client. | ✅ |  |
+| Khi file server khởi động, nó kết nối đến master server và gọi service (1) để gửi thông tin của chính nó lên file server gồm: danh sách file có thể chia sẻ, địa chỉ IP, port mà client có thể kết nối tới để tải file. | ✅ |  |
+| Cung cấp service (#3) để client tải file với input là tên file cần tải. Service này sử dụng giao thức UDP tại tầng Transport. | ✅ |  |
+| Cung cấp chức năng hiện danh sách file hiện có trên các file server | ✅ | Chức năng nhóm tự thêm vào |
+| Cho phép nhiều client kết nối đến cùng một thời điểm. | ✅ |  |
+| Khi file server ngừng hoạt động, master server cần loại bỏ danh sách file của file server tương ứng. | ✅ |  |
 
 ### 1.3. Client
 
-| Chức năng | Hoàn thành |
-| :-- | :-- |
-| Có thể sử dụng service (2) do master server cung cấp và service (3) do file server cung cấp. | 100% |
-| Có thể tải nhiều file cùng một thời điểm. | 100% |
+| Chức năng | Hoàn thành | Ghi chú |
+| :-- | :-- | :-- |
+| Có thể sử dụng service (2) do master server cung cấp và service (3) do file server cung cấp. | ✅ |  |
+| Có thể tải nhiều file cùng một thời điểm. | ✅ |  |
+
+### 1.4. Các yêu cầu khác
+
+| Chức năng | Hoàn thành | Ghi chú |
+| :-- | :-- | :-- |
+| Thiết kế giao thức tại tầng Application để đảm bảo file được truyền nhận theo giao thức UDP
+(service #3) có độ tin cậy (đảm bảo đúng dữ liệu của file được tải). | ❌ | Nhóm không áp dụng UDP tin cậy được nên sử dung TCP |
 
 ## 2. Phân công việc
 
