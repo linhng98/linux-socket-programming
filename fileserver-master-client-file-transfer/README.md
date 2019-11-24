@@ -22,8 +22,11 @@
 ![](images/LIST.png)
 ### 3.3. Chi tiết vận hành
 #### 3.3.1 Master
+![](images/master-workflow.png)
 #### 3.3.2 Fileserver
+![](images/fileserver-workflow.png)
 #### 3.3.3 Client
+![](images/client-workflow.png)
 ---
 ## 4. Usage
 ---
