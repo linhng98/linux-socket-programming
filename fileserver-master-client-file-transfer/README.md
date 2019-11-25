@@ -72,6 +72,17 @@ Thành viên nhóm
 
 ![](images/master-fileserver-client.png)
 
+- **Centralize**
+  - Xử lí tập trung, toàn bộ thông tin về  file được lưu trên master server
+  - Client connect đến master để lấy IP PORT fileserver sau đó kết nối đến để lấy data, các fileserver phân tán ở mọi nơi (scalable), tránh trường hợp masterserver bị quá tải
+  - Client có thể lấy danh sách toàn bộ các file đang được lưu thông tin trên master  
+- **Multithreading**
+  - Đồng bộ danh sách các node fileserver (linked list) bằng mutex (multithread thêm xóa sửa trên critical section)
+  - Masterserver, fileserver có khả năng xử lí nhiều request 1 lúc
+  - Client sử dụng multithread tạo nhiều connection => có khả năng tải nhiều file cùng 1 lúc
+- **check keep alive**
+  - Masterserver sử dụng 1 thread chạy vòng lặp sau mỗi 2s, gửi PING request đến ip và port, check heartbeat của từng fileserver trong list, nếu bị mất kết nối sẽ xóa fileserver ra khỏi list 
+
 ### 3.2. Thiết kế giao thức
 
 #### 3.2.1. PING method
@@ -82,7 +93,7 @@ Thành viên nhóm
 
 ![](images/SYNC.png)
 
-#### 3.2.3. INFO pmethod
+#### 3.2.3. INFO method
 
 ![](images/INFO.png)
 
@@ -97,22 +108,41 @@ Thành viên nhóm
 ### 3.3. Chi tiết vận hành
 
 #### 3.3.1 Master
-<<<<<<< HEAD
 ![](images/master-workflow.png)
+- Fileserver nhận tham số dòng lệnh, lấy thông tin port và thư mục sẽ lưu thông tin fileserver
+- Tạo list_fs (list fileserver) là một linked list
+- tạo 1 thread dùng để check connection của từng fileserver trong list_fs
+- Tạo socket, listen trên port đã xác định
+- Nhận request, tạo 1 thread detach khỏi main thread để phục vụ:
+  - Nếu là SYNC request, add fileserver vào list_fs, tạo thư mục định dạng là IP_PORT để chứa danh sách các file
+  - Nếu là INFO request, trả về client thông tin các fileserver tương ứng với danh sách file
+  - Nếu là LIST request, lấy toàn bộ thông tin các fileserver cùng với filename tương ứng trả về cho client
+
 #### 3.3.2 Fileserver
 ![](images/fileserver-workflow.png)
+- Fileserver nhận tham số dòng lệnh, lấy thông tin port sẽ listen, master ip port và thư mục sẽ chia sẻ file
+- Tạo socket, bind, listen trên port đã xác định
+- Gửi SYNC request đến master server để đồng bộ file, cấu trúc là thông tin IP_PORT cùng với danh sách các file cần đồng bộ
+- Nhận request, tạo 1 thread detach khỏi main thread để phục vụ:
+  - Nếu là masterserver PING thì respond OK
+  - Nếu là client GET thì trả về filesize cùng với data, trường hợp ko tìm thấy file trả về FNF (file not found) 
+
 #### 3.3.3 Client
 ![](images/client-workflow.png)
----
-=======
+- Client nhận tham số dòng lệnh từ user, lấy thông tin master server ip, port và danh sách các file cần tải
+- Client nhận thông tin các fileserver, tạo nhiều thread (connection) để tải từng file
+- Sau khi các thread đã tải xong, join thread và kết thúc chương trình 
 
-#### 3.3.2 Fileserver
-
-#### 3.3.3 Client
-
->>>>>>> d0e7aa3ded49374929c348b77e8d9ac3bffbf0b8
 ## 4. Usage
 
 ## 5. Demo
 
 ## 6. Tham khảo
+- https://dev.to/mattcanello/multithreaded-programming-lmh
+- http://www.kegel.com/c10k.html#strategies
+- https://linux.die.net/man/2/setsockopt
+- https://www.geeksforgeeks.org/mutex-lock-for-linux-thread-synchronization/
+- http://www.cs.kent.edu/~ruttan/sysprog/lectures/multi-thread/multi-thread.html
+- https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
+- https://stackoverflow.com/questions/4553012/checking-if-a-file-is-a-directory-or-just-a-file
+- https://www.cs.rpi.edu/~moorthy/Courses/os98/Pgms/socket.html
