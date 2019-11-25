@@ -72,6 +72,8 @@ Thành viên nhóm
 | Client | Đoàn Khuê | 1612311 | 90% | Không triển khai được UDP tin cậy |
 | Test và ghi báo cáo | Mai Chí Cường | 1612070 | 100% |  |
 
+Cả nhóm tham gia thiết kế giao thức.
+
 ## 3. Tổng quan hệ thống
 
 ### 3.1. Mô hình hoạt động
