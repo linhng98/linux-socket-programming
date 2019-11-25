@@ -136,7 +136,7 @@ Master server centralize fileserver info storage
 Fileserver:
 
 ```sh
-$ ./fileserver -h                                                                                                             130 
+$ ./fileserver -h
 fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>
 allow client download file in storage directory 
 
@@ -151,7 +151,7 @@ allow client download file in storage directory
 Client:
 
 ```sh
-$ client -h                                           ~/Documents/linux-socket-programming/fileserver-master-client-file-transfer
+$ client -h
 client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...
 Get fileserver info from master server then download file from fileserver
 
