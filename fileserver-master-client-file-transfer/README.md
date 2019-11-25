@@ -105,11 +105,20 @@ Cả nhóm tham gia thiết kế giao thức.
 ### 3.3. Chi tiết vận hành
 
 #### 3.3.1 Master
+<<<<<<< HEAD
+![](images/master-workflow.png)
+#### 3.3.2 Fileserver
+![](images/fileserver-workflow.png)
+#### 3.3.3 Client
+![](images/client-workflow.png)
+---
+=======
 
 #### 3.3.2 Fileserver
 
 #### 3.3.3 Client
 
+>>>>>>> d0e7aa3ded49374929c348b77e8d9ac3bffbf0b8
 ## 4. Usage
 
 ## 5. Demo
