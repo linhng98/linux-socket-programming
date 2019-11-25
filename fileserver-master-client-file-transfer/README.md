@@ -116,7 +116,7 @@ Cả nhóm tham gia thiết kế giao thức.
 ### 3.3. Chi tiết vận hành
 
 #### 3.3.1 Master
-<<<<<<< HEAD
+
 ![](images/master-workflow.png)
 - Fileserver nhận tham số dòng lệnh, lấy thông tin port và thư mục sẽ lưu thông tin fileserver
 - Tạo list_fs (list fileserver) là một linked list
@@ -141,19 +141,6 @@ Cả nhóm tham gia thiết kế giao thức.
 - Client nhận tham số dòng lệnh từ user, lấy thông tin master server ip, port và danh sách các file cần tải
 - Client nhận thông tin các fileserver, tạo nhiều thread (connection) để tải từng file
 - Sau khi các thread đã tải xong, join thread và kết thúc chương trình 
-
-## 4. Usage
-=======
-
-![](images/master-workflow.png)
-
-#### 3.3.2 Fileserver
-
-![](images/fileserver-workflow.png)
-
-#### 3.3.3 Client
-
-![](images/client-workflow.png)
 
 ## 4. Usage
 
@@ -206,7 +193,6 @@ This version still not support hostname yet :D
 To download a file whose name start with a '-', for example '-foo', use command: 
 client [OPTIONS] -- -foo
 ```
->>>>>>> 20b7a85464d06e636b463b31ecaa70a3cdbf0513
 
 ## 5. Demo
 
