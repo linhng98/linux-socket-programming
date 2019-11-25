@@ -61,10 +61,18 @@ Thành viên nhóm
 
 | Chức năng | Hoàn thành | Ghi chú |
 | :-- | :-- | :-- |
-| Thiết kế giao thức tại tầng Application để đảm bảo file được truyền nhận theo giao thức UDP
-(service #3) có độ tin cậy (đảm bảo đúng dữ liệu của file được tải). | ❌ | Nhóm không áp dụng UDP tin cậy được nên sử dung TCP |
+| Thiết kế giao thức tại tầng Application để đảm bảo file được truyền nhận theo giao thức UDP (service #3) có độ tin cậy. | ❌ | Nhóm không áp dụng UDP tin cậy được nên sử dung TCP |
 
 ## 2. Phân công việc
+
+| Chức năng | Người thực hiện | Mã số sinh viên | Mức độ hoàn thành | Ghi chú |
+| :-- | :-- | :-- | :-- | :-- |
+| Master | Nguyễn Văn Linh | 1612340 | 100% |  |
+| File Server | Phạm Trung Tín | 1612695 | 90% | Không triển khai được UDP tin cậy |
+| Client | Đoàn Khuê | 1612311 | 90% | Không triển khai được UDP tin cậy |
+| Test và ghi báo cáo | Mai Chí Cường | 1612070 | 100% |  |
+
+Cả nhóm tham gia thiết kế giao thức.
 
 ## 3. Tổng quan hệ thống
 
@@ -108,6 +116,7 @@ Thành viên nhóm
 ### 3.3. Chi tiết vận hành
 
 #### 3.3.1 Master
+<<<<<<< HEAD
 ![](images/master-workflow.png)
 - Fileserver nhận tham số dòng lệnh, lấy thông tin port và thư mục sẽ lưu thông tin fileserver
 - Tạo list_fs (list fileserver) là một linked list
@@ -134,8 +143,76 @@ Thành viên nhóm
 - Sau khi các thread đã tải xong, join thread và kết thúc chương trình 
 
 ## 4. Usage
+=======
+
+![](images/master-workflow.png)
+
+#### 3.3.2 Fileserver
+
+![](images/fileserver-workflow.png)
+
+#### 3.3.3 Client
+
+![](images/client-workflow.png)
+
+## 4. Usage
+
+Chúng ta có thể sử dụng cờ `-h` để xem hướng dẫn sử dụng.
+
+Master:
+
+```sh
+$ ./master -h
+Usage: master -p <PORT>
+Master server centralize fileserver info storage
+
+-p, --port         listen port  (default 55555)
+-d, --dir          directory to store fileserver info (must is empty dir) 
+                   (default $HOME/.master)-h, --help         display help message then exit
+-v, --version      output version information then exit
+```
+
+Fileserver:
+
+```sh
+$ ./fileserver -h
+fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>
+allow client download file in storage directory 
+
+-i, --master-ip    master server ip (default 127.0.0.1)
+-m, --master-port  master server listening port (default 55555)
+-p, --listen-port  listen port  (default 44444)
+-d, --dir          storage directory to download 
+-h, --help         display help message then exit
+-v, --version      output version information then exit
+```
+
+Client:
+
+```sh
+$ client -h
+client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...
+Get fileserver info from master server then download file from fileserver
+
+-i, --host-ip      host ip of master server (default 127.0.0.1)
+-p, --port         listening port of master server (default 55555)
+-o, --out-dir      out dir for downloaded file (default ./)
+-l, --list         list all file on master server
+-h, --help         display help message then exit
+-v, --version      output version information then exit
+
+By default, this software can not download directory, just file only :)
+This version still not support hostname yet :D
+To download a file whose name start with a '-', for example '-foo', use command: 
+client [OPTIONS] -- -foo
+```
+>>>>>>> 20b7a85464d06e636b463b31ecaa70a3cdbf0513
 
 ## 5. Demo
+
+Link YouTube:
+
+[https://youtu.be/xiSovxvSRFk](https://youtu.be/xiSovxvSRFk)
 
 ## 6. Tham khảo
 - https://dev.to/mattcanello/multithreaded-programming-lmh
