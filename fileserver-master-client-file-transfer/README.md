@@ -61,10 +61,16 @@ Thành viên nhóm
 
 | Chức năng | Hoàn thành | Ghi chú |
 | :-- | :-- | :-- |
-| Thiết kế giao thức tại tầng Application để đảm bảo file được truyền nhận theo giao thức UDP
-(service #3) có độ tin cậy (đảm bảo đúng dữ liệu của file được tải). | ❌ | Nhóm không áp dụng UDP tin cậy được nên sử dung TCP |
+| Thiết kế giao thức tại tầng Application để đảm bảo file được truyền nhận theo giao thức UDP (service #3) có độ tin cậy. | ❌ | Nhóm không áp dụng UDP tin cậy được nên sử dung TCP |
 
 ## 2. Phân công việc
+
+| Chức năng | Người thực hiện | Mã số sinh viên | Mức độ hoàn thành | Ghi chú |
+| :-- | :-- | :-- | :-- | :-- |
+| Master | Nguyễn Văn Linh | 1612340 | 100% |  |
+| File Server | Phạm Trung Tín | 1612695 | 90% | Không triển khai được UDP tin cậy |
+| Client | Đoàn Khuê | 1612311 | 90% | Không triển khai được UDP tin cậy |
+| Test và ghi báo cáo | Mai Chí Cường | 1612070 | 100% |  |
 
 ## 3. Tổng quan hệ thống
 
