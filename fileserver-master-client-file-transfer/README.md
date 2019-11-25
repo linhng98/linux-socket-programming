@@ -118,8 +118,60 @@ Cả nhóm tham gia thiết kế giao thức.
 
 ## 4. Usage
 
+Chúng ta có thể sử dụng cờ `-h` để xem hướng dẫn sử dụng.
+
+Master:
+
+```sh
+$ ./master -h
+Usage: master -p <PORT>
+Master server centralize fileserver info storage
+
+-p, --port         listen port  (default 55555)
+-d, --dir          directory to store fileserver info (must is empty dir) 
+                   (default $HOME/.master)-h, --help         display help message then exit
+-v, --version      output version information then exit
+```
+
+Fileserver:
+
+```sh
+$ ./fileserver -h                                                                                                             130 
+fileserver [-i <IP>] [-m <PORT>] [-p <PORT>] -d <DIR>
+allow client download file in storage directory 
+
+-i, --master-ip    master server ip (default 127.0.0.1)
+-m, --master-port  master server listening port (default 55555)
+-p, --listen-port  listen port  (default 44444)
+-d, --dir          storage directory to download 
+-h, --help         display help message then exit
+-v, --version      output version information then exit
+```
+
+Client:
+
+```sh
+$ client -h                                           ~/Documents/linux-socket-programming/fileserver-master-client-file-transfer
+client [-i <IP>] [-p <PORT>] [-o <OUTPATH>] <FILE> ...
+Get fileserver info from master server then download file from fileserver
+
+-i, --host-ip      host ip of master server (default 127.0.0.1)
+-p, --port         listening port of master server (default 55555)
+-o, --out-dir      out dir for downloaded file (default ./)
+-l, --list         list all file on master server
+-h, --help         display help message then exit
+-v, --version      output version information then exit
+
+By default, this software can not download directory, just file only :)
+This version still not support hostname yet :D
+To download a file whose name start with a '-', for example '-foo', use command: 
+client [OPTIONS] -- -foo
+```
+
 ## 5. Demo
 
-Link YouTube: [](https://youtu.be/xiSovxvSRFk)
+Link YouTube:
+
+[https://youtu.be/xiSovxvSRFk](https://youtu.be/xiSovxvSRFk)
 
 ## 6. Tham khảo
