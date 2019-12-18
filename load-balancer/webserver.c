@@ -26,6 +26,7 @@ typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
 
 static int is_dir(char *path);
+static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -77,6 +78,34 @@ int main(int argc, char *argv[])
 
     printf("dir: %s\nport: %d\n", dir, port);
 
+    int sockfd;
+    sockaddr_in servaddr;
+    char buffer[BUFFSIZE];
+    int ret;
+    init_server_socket(&sockfd, &servaddr);
+
+    while (1)
+    {
+        int newsock = accept(sockfd, NULL, NULL);
+
+        while (1)
+        {
+            ret = recv(newsock, buffer, BUFFSIZE, 0);
+
+            if (ret == 0)
+                break;
+            else if (ret < 0)
+            {
+                perror("error when reading socket");
+                break;
+            }
+
+            printf("%s", buffer);
+        }
+
+        close(newsock);
+    }
+
     exit(EXIT_SUCCESS);
 }
 
@@ -85,4 +114,33 @@ int is_dir(char *path)
     struct stat path_stat;
     stat(path, &path_stat);
     return S_ISDIR(path_stat.st_mode);
+}
+
+void init_server_socket(int *sockfd, sockaddr_in *servaddr)
+{
+    // assign ip, port
+    servaddr->sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr->sin_port = htons(port);
+    servaddr->sin_family = AF_INET;
+
+    // create new socket
+    if ((*sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        perror("create socket fail");
+        exit(EXIT_FAILURE);
+    }
+
+    // Binding newly created socket to given IP and verification
+    if ((bind(*sockfd, (sockaddr *)servaddr, sizeof(*servaddr))) != 0)
+    {
+        perror("socket bind failed...");
+        exit(EXIT_FAILURE);
+    }
+
+    // Now server is ready to listen and verification
+    if ((listen(*sockfd, 0)) != 0)
+    {
+        perror("Listen failed...\n");
+        exit(EXIT_FAILURE);
+    }
 }
