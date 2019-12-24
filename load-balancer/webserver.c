@@ -6,6 +6,8 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "module/parse_header/header_parser.h"
+#include "module/parse_url/url_parser.h"
 
 #define BUFFSIZE 512
 #define USAGE "Usage: webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"
@@ -35,7 +37,7 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {0, 0, 0, 0}};
 
 static int port = 11111; // default webserver port
-static char *dir = ".";  // default resource dir
+static char *dir = "../resource";  // default resource dir
 
 int main(int argc, char *argv[])
 {
@@ -129,6 +131,7 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr)
         perror("create socket fail");
         exit(EXIT_FAILURE);
     }
+    setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
 
     // Binding newly created socket to given IP and verification
     if ((bind(*sockfd, (sockaddr *)servaddr, sizeof(*servaddr))) != 0)
