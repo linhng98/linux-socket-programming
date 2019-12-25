@@ -34,6 +34,7 @@ static int is_dir(char *path);
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
 static int get_req_headers(char *hbuff, int sockfd);
 static char *concat(const char *s1, const char *s2);
+static unsigned long get_file_size(char *path);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -91,8 +92,6 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    printf("dir: %s\nport: %d\n", dir, port);
-
     int sockfd;
     sockaddr_in servaddr;
     char buffer[BUFFSIZE];
@@ -103,13 +102,15 @@ int main(int argc, char *argv[])
     while (1)
     {
         int newsock = accept(sockfd, NULL, NULL);
-        timeval tv;
-        tv.tv_sec = 5; // wait recv 5s timeout
+        /*timeval tv;
+        tv.tv_sec = 3; // wait recv 3s timeout
         tv.tv_usec = 0;
-        setsockopt(newsock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+        setsockopt(newsock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);*/
 
+        int seq = 0;
         while (1)
         {
+            memset(header, '\0', sizeof(header));
             char req_file[PATH_MAX];
 
             ret = get_req_headers(header, newsock); // get request header
@@ -125,33 +126,37 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            char *success_res_header = "HTTP/1.1 200 OK\r\n"
-                                       "Keep-Alive: timeout=5\r\n"
-                                       "Connection: keep-alive\r\n"
-                                       "\r\n";
             char *path_file = concat(dir, req_file);
-            puts(path_file);
-            send(newsock, success_res_header, strlen(success_res_header), 0);
             FILE *f = fopen(path_file, "rb");
+
             if (f != NULL) // file exist
             {
+                char *success_res_header = "HTTP/1.1 200 OK\r\n"
+                                           //"Keep-Alive: timeout=5\r\n"
+                                           "Connection: keep-alive\r\n";
+                send(newsock, success_res_header, strlen(success_res_header), 0);
+
+                sprintf(buffer, "Content-Length: %lu\r\n\r\n", get_file_size(path_file));
+                send(newsock, buffer, strlen(buffer), 0);
                 while ((ret = fread(buffer, 1, BUFFSIZE, f)) > 0)
-                    send(newsock, buffer, ret, 0);
+                {
+                    buffer[ret] = '\0';
+                    if (send(newsock, buffer, ret, 0) <= 0)
+                        break;
+                }
                 fclose(f);
             }
-            else // file not found
-            {
-                char *error404_path;
-                error404_path = concat(dir, "/404.html");
-                FILE *err = fopen(error404_path, "rb");
-
-                while ((ret = fread(buffer, 1, BUFFSIZE, err)) > 0)
-                    send(newsock, buffer, ret, 0);
-                free(error404_path);
-                fclose(err);
+            else if (seq == 0) // file not found and seq == 0 (first GET request)
+            {                  // redirect 404 error
+                char *redirect_404 = "HTTP/1.1 301 Moved Permanently\r\n"
+                                     "Location: /404.html\r\n\r\n";
+                send(newsock, redirect_404, strlen(redirect_404), 0);
             }
+            else // unknow file, send nothing
+                send(newsock, "\r\n", 2, 0);
 
             free(path_file);
+            seq++;
         }
 
         close(newsock);
@@ -211,7 +216,8 @@ int get_req_headers(char *hbuff, int sockfd)
         if (ptr[-1] == '\n' && ptr[-2] == '\r' && ptr[-3] == '\n' && ptr[-4] == '\r')
             break;
     }
-
+    hbuff[strlen(hbuff)] = '\0';
+    printf("%s\n", hbuff);
     return ret; // ret <= 0 (error or connection closed)
 }
 
@@ -222,4 +228,11 @@ char *concat(const char *s1, const char *s2)
     strcpy(result, s1);
     strcat(result, s2);
     return result;
+}
+
+unsigned long get_file_size(char *path)
+{
+    struct stat st;
+    stat(path, &st);
+    return st.st_size;
 }
