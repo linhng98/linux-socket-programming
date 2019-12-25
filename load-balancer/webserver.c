@@ -1,17 +1,22 @@
+#define _GNU_SOURCE
 #include <arpa/inet.h>
+#include <errno.h>
 #include <getopt.h>
 #include <limits.h>
 #include <linux/limits.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 
-#define BUFFSIZE 512
+#define BUFFSIZE 50
 #define HEADER_SIZE 4000
+#define MAX_POLL_FD 1000
 #define USAGE "Usage: webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"
 #define VERSION                                                                                    \
     "webserver v1.0.0\n"                                                                           \
@@ -29,12 +34,14 @@
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
 typedef struct timeval timeval;
+typedef struct pollfd pollfd;
 
 static int is_dir(char *path);
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
 static int get_req_headers(char *hbuff, int sockfd);
 static char *concat(const char *s1, const char *s2);
 static unsigned long get_file_size(char *path);
+static void *thread_serv_request(void *sockfd);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -87,38 +94,52 @@ int main(int argc, char *argv[])
     char abs_dir[PATH_MAX];
     if (dir == NULL || (dir = realpath(dir, abs_dir)) == NULL)
     {
-        printf("Missing resource dir or dir not exist.\nTry 'webserver --help' for more "
+        printf("Missing resource dir or dir not exist.\nTry 'webserver --help' "
+               "for more "
                "information.\n");
         exit(EXIT_FAILURE);
     }
 
+    // init server socket
     int sockfd;
     sockaddr_in servaddr;
-    char buffer[BUFFSIZE];
-    char header[HEADER_SIZE];
-    int ret;
+    pollfd ufds[MAX_POLL_FD]; // init 1000 fd to monitor
+    for (int i = 0; i < MAX_POLL_FD; i++)
+        ufds[i].fd = -1;
     init_server_socket(&sockfd, &servaddr);
 
     while (1)
     {
-        int newsock = accept(sockfd, NULL, NULL);
-        /*timeval tv;
-        tv.tv_sec = 3; // wait recv 3s timeout
-        tv.tv_usec = 0;
-        setsockopt(newsock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);*/
+        int clientfd = accept(sockfd, NULL, NULL);
+        for (int i = 0; i < MAX_POLL_FD; i++) // add newfd to poll array
+            if (ufds[i].fd == -1)
+            {
+                ufds[i].fd = clientfd;
+                ufds[i].events = POLLIN | POLLRDHUP;
+            }
+
+        timeval tv;
+        pthread_t nthread_id;
+
+        tv.tv_sec = 2;
+        tv.tv_usec = 10000; // timeout 10 millisec
+        setsockopt(clientfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
 
         int seq = 0;
         while (1)
         {
-            memset(header, '\0', sizeof(header));
+            char buffer[BUFFSIZE];
+            char header[HEADER_SIZE];
             char req_file[PATH_MAX];
+            int ret;
+            memset(header, '\0', sizeof(header));
 
-            ret = get_req_headers(header, newsock); // get request header
+            ret = get_req_headers(header, clientfd); // get request header
             sscanf(header, "%*s %s %*s", req_file);
             if (strcmp(req_file, "/") == 0)
                 strcpy(req_file, "/index.html");
 
-            if (ret == 0) // error when reading header
+            if (ret == 0) // connection closed
                 break;
             if (ret < 0)
             {
@@ -131,17 +152,19 @@ int main(int argc, char *argv[])
 
             if (f != NULL) // file exist
             {
-                char *success_res_header = "HTTP/1.1 200 OK\r\n"
-                                           //"Keep-Alive: timeout=5\r\n"
-                                           "Connection: keep-alive\r\n";
-                send(newsock, success_res_header, strlen(success_res_header), 0);
+                char *success_res_header = "HTTP/1.1 200 OK\r\n";
+                //"Keep-Alive: timeout=5\r\n"
+                //"Connection: keep-alive\r\n";
+                if (send(clientfd, success_res_header, strlen(success_res_header), 0) <= 0)
+                    break;
 
                 sprintf(buffer, "Content-Length: %lu\r\n\r\n", get_file_size(path_file));
-                send(newsock, buffer, strlen(buffer), 0);
+                if (send(clientfd, buffer, strlen(buffer), 0) <= 0)
+                    break;
                 while ((ret = fread(buffer, 1, BUFFSIZE, f)) > 0)
                 {
                     buffer[ret] = '\0';
-                    if (send(newsock, buffer, ret, 0) <= 0)
+                    if (send(clientfd, buffer, ret, 0) <= 0)
                         break;
                 }
                 fclose(f);
@@ -150,16 +173,20 @@ int main(int argc, char *argv[])
             {                  // redirect 404 error
                 char *redirect_404 = "HTTP/1.1 301 Moved Permanently\r\n"
                                      "Location: /404.html\r\n\r\n";
-                send(newsock, redirect_404, strlen(redirect_404), 0);
+                if (send(clientfd, redirect_404, strlen(redirect_404), 0) <= 0)
+                    break;
             }
             else // unknow file, send nothing
-                send(newsock, "\r\n", 2, 0);
+            {
+                if (send(clientfd, "\r\n", 2, 0) <= 0)
+                    break;
+            }
 
             free(path_file);
             seq++;
         }
 
-        close(newsock);
+        close(clientfd);
         printf("close connection\n");
     }
 
@@ -216,8 +243,7 @@ int get_req_headers(char *hbuff, int sockfd)
         if (ptr[-1] == '\n' && ptr[-2] == '\r' && ptr[-3] == '\n' && ptr[-4] == '\r')
             break;
     }
-    hbuff[strlen(hbuff)] = '\0';
-    printf("%s\n", hbuff);
+    printf("%s", hbuff);
     return ret; // ret <= 0 (error or connection closed)
 }
 
@@ -235,4 +261,13 @@ unsigned long get_file_size(char *path)
     struct stat st;
     stat(path, &st);
     return st.st_size;
+}
+
+void *thread_serv_request(void *sockfd)
+{
+    pthread_detach(pthread_self()); // detach thread from main thread
+
+    int fd = *(int *)sockfd;
+
+    pthread_exit(NULL);
 }
