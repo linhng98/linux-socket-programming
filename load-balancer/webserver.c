@@ -1,15 +1,17 @@
 #include <arpa/inet.h>
 #include <getopt.h>
+#include <limits.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
-#include "module/parse_header/header_parser.h"
-#include "module/parse_url/url_parser.h"
 
 #define BUFFSIZE 512
+#define HEADER_SIZE 4000
 #define USAGE "Usage: webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"
 #define VERSION                                                                                    \
     "webserver v1.0.0\n"                                                                           \
@@ -26,9 +28,12 @@
 
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
+typedef struct timeval timeval;
 
 static int is_dir(char *path);
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
+static int get_req_headers(char *hbuff, int sockfd);
+static char *concat(const char *s1, const char *s2);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -37,7 +42,7 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {0, 0, 0, 0}};
 
 static int port = 11111; // default webserver port
-static char *dir = "../resource";  // default resource dir
+static char *dir = NULL; // default resource dir
 
 int main(int argc, char *argv[])
 {
@@ -78,34 +83,79 @@ int main(int argc, char *argv[])
         }
     }
 
+    char abs_dir[PATH_MAX];
+    if (dir == NULL || (dir = realpath(dir, abs_dir)) == NULL)
+    {
+        printf("Missing resource dir or dir not exist.\nTry 'webserver --help' for more "
+               "information.\n");
+        exit(EXIT_FAILURE);
+    }
+
     printf("dir: %s\nport: %d\n", dir, port);
 
     int sockfd;
     sockaddr_in servaddr;
     char buffer[BUFFSIZE];
+    char header[HEADER_SIZE];
     int ret;
     init_server_socket(&sockfd, &servaddr);
 
     while (1)
     {
         int newsock = accept(sockfd, NULL, NULL);
+        timeval tv;
+        tv.tv_sec = 5; // wait recv 5s timeout
+        tv.tv_usec = 0;
+        setsockopt(newsock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
 
         while (1)
         {
-            ret = recv(newsock, buffer, BUFFSIZE, 0);
+            char req_file[PATH_MAX];
 
-            if (ret == 0)
+            ret = get_req_headers(header, newsock); // get request header
+            sscanf(header, "%*s %s %*s", req_file);
+            if (strcmp(req_file, "/") == 0)
+                strcpy(req_file, "/index.html");
+
+            if (ret == 0) // error when reading header
                 break;
-            else if (ret < 0)
+            if (ret < 0)
             {
-                perror("error when reading socket");
+                perror("error when reading request socket");
                 break;
             }
 
-            printf("%s", buffer);
+            char *success_res_header = "HTTP/1.1 200 OK\r\n"
+                                       "Keep-Alive: timeout=5\r\n"
+                                       "Connection: keep-alive\r\n"
+                                       "\r\n";
+            char *path_file = concat(dir, req_file);
+            puts(path_file);
+            send(newsock, success_res_header, strlen(success_res_header), 0);
+            FILE *f = fopen(path_file, "rb");
+            if (f != NULL) // file exist
+            {
+                while ((ret = fread(buffer, 1, BUFFSIZE, f)) > 0)
+                    send(newsock, buffer, ret, 0);
+                fclose(f);
+            }
+            else // file not found
+            {
+                char *error404_path;
+                error404_path = concat(dir, "/404.html");
+                FILE *err = fopen(error404_path, "rb");
+
+                while ((ret = fread(buffer, 1, BUFFSIZE, err)) > 0)
+                    send(newsock, buffer, ret, 0);
+                free(error404_path);
+                fclose(err);
+            }
+
+            free(path_file);
         }
 
         close(newsock);
+        printf("close connection\n");
     }
 
     exit(EXIT_SUCCESS);
@@ -146,4 +196,30 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr)
         perror("Listen failed...\n");
         exit(EXIT_FAILURE);
     }
+}
+
+int get_req_headers(char *hbuff, int sockfd)
+{
+    int ret;
+    char c;
+    char *ptr = hbuff;
+
+    while ((ret = recv(sockfd, &c, 1, 0)) > 0)
+    {
+        *ptr = c;
+        ptr++;
+        if (ptr[-1] == '\n' && ptr[-2] == '\r' && ptr[-3] == '\n' && ptr[-4] == '\r')
+            break;
+    }
+
+    return ret; // ret <= 0 (error or connection closed)
+}
+
+char *concat(const char *s1, const char *s2)
+{
+    char *result = malloc(strlen(s1) + strlen(s2) + 1); // +1 for the null-terminator
+    // in real code you would check for errors in malloc here
+    strcpy(result, s1);
+    strcat(result, s2);
+    return result;
 }
