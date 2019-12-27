@@ -14,9 +14,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#define BUFFSIZE 50
+#define BUFFSIZE 512
 #define HEADER_SIZE 4000
-#define MAX_POLL_FD 1000  // 1000 fd list
+#define MAX_POLL_FD 100   // 100 fd list
 #define POLL_TIMEOUT 1000 // 1000 millisec
 #define HTTP_TIMEOUT 3    // http timeout 3s
 #define USAGE "Usage: webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"
@@ -44,6 +44,7 @@ static int get_req_headers(char *hbuff, int sockfd);
 static char *concat(const char *s1, const char *s2);
 static unsigned long get_file_size(char *path);
 static int serve_client_request(int sockfd);
+static void remove_fd(pollfd *ufds, int i);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"dir", required_argument, 0, 'd'},
@@ -120,9 +121,6 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        for (int i = 1; i < nfds; i++)
-            printf("%d  ", ufds[i].fd);
-        printf("\n");
         int ret = poll(ufds, nfds, POLL_TIMEOUT);
 
         if (ret == 0) // timeout, check timestamp each connection
@@ -143,7 +141,6 @@ int main(int argc, char *argv[])
         }
         else if (ret > 0) // poll success
         {
-            int count = 0;
             if (ufds[0].revents == POLLIN) // new client connect
             {
                 int newsock = accept(sockfd, NULL, NULL); // accept new connection
@@ -157,12 +154,13 @@ int main(int argc, char *argv[])
                 else
                     perror("accept connection fail");
 
-                count++; // update num event
+                continue; // repoll
             }
 
+            int count = 0;
             for (int i = 1; i < nfds; i++)
             {
-                if (count == ret) // process all event
+                if (count == ret) // processed all event
                     break;
 
                 if (ufds[i].revents != 0) // new event occur
@@ -170,12 +168,17 @@ int main(int argc, char *argv[])
                     int code = ufds[i].revents;
 
                     if (code == POLLIN) // process incoming data
-                        serve_client_request(ufds[i].fd);
+                    {
+                        if (serve_client_request(ufds[i].fd) != 1)
+                        { // some error when reading fd or invalid url
+                            remove_fd(ufds, i);
+                            nfds--;
+                            UPDATE_POLLFD = 1;
+                        }
+                    }
                     else // some error happen, close socket, update pollfd list
                     {
-                        close(ufds[i].fd);
-                        printf("closed connection (%d)\n", ufds[i].fd);
-                        ufds[i].fd = -1;
+                        remove_fd(ufds, i);
                         nfds--;
                         UPDATE_POLLFD = 1;
                     }
@@ -320,10 +323,19 @@ int serve_client_request(int sockfd)
     else // file not found and seq == 0 (first GET request)
     {    // redirect 404 error
         char *redirect_404 = "HTTP/1.1 301 Moved Permanently\r\n"
-                             "Location: /404.html\r\n\r\n";
+                             "Location: /404.html\r\n"
+                             "Connection: close\r\n\r\n";
         send(sockfd, redirect_404, strlen(redirect_404), 0);
+        return 2;
     }
 
     free(path_file);
     return 1;
+}
+
+void remove_fd(pollfd *ufds, int i)
+{
+    close(ufds[i].fd);
+    printf("closed connection (%d)\n", ufds[i].fd);
+    ufds[i].fd = -1;
 }
