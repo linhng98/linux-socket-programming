@@ -13,6 +13,7 @@
 #define MAX_EVENTS 100    // 100 fd list
 #define POLL_TIMEOUT 1000 // 1000 millisec
 #define HTTP_TIMEOUT 3    // http timeout 3s
+#define NUM_WEBSERVER 3   //
 #define USAGE "Usage: balancer [-p <PORT>]\n"
 #define VERSION                                                                                    \
     "balancer v1.0.0\n"                                                                            \
@@ -31,13 +32,14 @@ typedef struct sockaddr sockaddr;
 
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
 static int get_req_headers(char *hbuff, int sockfd);
+static int get_lowest_index(int *arr);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"help", no_argument, 0, 'h'},
                                        {"version", no_argument, 0, 'v'},
                                        {0, 0, 0, 0}};
 
-static int listen_port = 80; // default load balancer port
+static int listen_port = 8000; // default load balancer port
 
 static char *wsA_ip = "127.0.0.1";
 static int wsA_port = 11111;
@@ -45,6 +47,7 @@ static char *wsB_ip = "127.0.0.1";
 static int wsB_port = 22222;
 static char *wsC_ip = "127.0.0.1";
 static int wsC_port = 33333;
+static int count_req_webserver[3] = {0};
 
 int main(int argc, char *argv[])
 {
@@ -98,6 +101,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    int ret;
+    int hbuff[HEADER_SIZE];
     while (1)
     { // start polling, waiting for event
         nfds = epoll_wait(epollfd, event_list, MAX_EVENTS, POLL_TIMEOUT);
@@ -112,7 +117,7 @@ int main(int argc, char *argv[])
         {
             for (int i = 0; i < nfds; i++)
             {
-                if (event_list[i].data.fd == sockfd) // new connection coming
+                if (event_list[i].data.fd == sockfd) // client init connection
                 {
                     conn_sock = accept(sockfd, NULL, NULL); // accept
                     if (conn_sock < 0)
@@ -123,14 +128,25 @@ int main(int argc, char *argv[])
 
                     ev.events = EPOLLIN;
                     ev.data.fd = conn_sock; // conn sock to list epoll
-                    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) < 0)
+                    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) <
+                        0) // add conn_sock to list epoll, catch event
                     {
                         perror("add listen socket to epollfd");
                         exit(EXIT_FAILURE);
                     }
                 }
-                else
+                else // new readable request header
                 {
+                    int sock = event_list[i].data.fd;
+                    ret = get_req_headers(hbuff, sock);
+                    if (ret > 0) // receive all header success
+                    {
+                        printf("%s\n", hbuff);
+                    }
+
+                    // remove sock from list epoll
+                    epoll_ctl(epollfd, EPOLL_CTL_DEL, sock, &ev);
+                    close(sock);
                 }
             }
         }
@@ -185,4 +201,13 @@ int get_req_headers(char *hbuff, int sockfd)
             break;
     }
     return ret; // ret <= 0 (error or connection closed)
+}
+
+static int get_lowest_index(int *arr)
+{
+    int lowest_idx = 0;
+    for (int i = 1; i < NUM_WEBSERVER; i++)
+        if (arr[i] < arr[lowest_idx])
+            lowest_idx = i;
+    return lowest_idx;
 }
