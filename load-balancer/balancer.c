@@ -37,7 +37,14 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"version", no_argument, 0, 'v'},
                                        {0, 0, 0, 0}};
 
-static int port = 80; // default load balancer port
+static int listen_port = 80; // default load balancer port
+
+static char *wsA_ip = "127.0.0.1";
+static int wsA_port = 11111;
+static char *wsB_ip = "127.0.0.1";
+static int wsB_port = 22222;
+static char *wsC_ip = "127.0.0.1";
+static int wsC_port = 33333;
 
 int main(int argc, char *argv[])
 {
@@ -52,7 +59,7 @@ int main(int argc, char *argv[])
         switch (c)
         {
         case 'p':
-            port = (int)strtol(optarg, NULL, 10);
+            listen_port = (int)strtol(optarg, NULL, 10);
             break;
         case 'h':
             printf(HELP);
@@ -77,7 +84,7 @@ int main(int argc, char *argv[])
     struct epoll_event ev, event_list[MAX_EVENTS];
     init_server_socket(&sockfd, &servaddr);
 
-    if (epollfd = epoll_create(MAX_EVENTS) < 0) // create epollfd
+    if ((epollfd = epoll_create(MAX_EVENTS)) < 0) // create epollfd
     {
         perror("create epollfd fail");
         exit(EXIT_FAILURE);
@@ -124,7 +131,6 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
-                    
                 }
             }
         }
@@ -138,7 +144,7 @@ void init_server_socket(int *sockfd, sockaddr_in *servaddr)
 {
     // assign ip, port
     servaddr->sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr->sin_port = htons(port);
+    servaddr->sin_port = htons(listen_port);
     servaddr->sin_family = AF_INET;
 
     // create new socket
