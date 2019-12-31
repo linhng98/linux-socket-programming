@@ -29,10 +29,16 @@
 
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr sockaddr;
+typedef struct webserver_info
+{
+    char ip[20];
+    int port;
+} webserver_info;
 
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
 static int get_req_headers(char *hbuff, int sockfd);
 static int get_lowest_index(int *arr);
+static int search_header_value(char *value, char *header, char *hbuff);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"help", no_argument, 0, 'h'},
@@ -41,12 +47,8 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
 
 static int listen_port = 8000; // default load balancer port
 
-static char *wsA_ip = "127.0.0.1";
-static int wsA_port = 11111;
-static char *wsB_ip = "127.0.0.1";
-static int wsB_port = 22222;
-static char *wsC_ip = "127.0.0.1";
-static int wsC_port = 33333;
+static webserver_info wsinfo_list[3] = {
+    {"127.0.0.1", 11111}, {"127.0.0.1", 22222}, {"127.0.0.1", 33333}};
 static int count_req_webserver[3] = {0};
 
 int main(int argc, char *argv[])
@@ -80,16 +82,25 @@ int main(int argc, char *argv[])
 
     // init server socket
     int sockfd;
-    int epollfd;
+    int epollfd, epollfd_ws;
     int nfds;
     int conn_sock;
+    char buffer[BUFFSIZE];
     sockaddr_in servaddr;
+    sockaddr_in clientaddr;
+    socklen_t addrlen = sizeof(clientaddr);
     struct epoll_event ev, event_list[MAX_EVENTS];
     init_server_socket(&sockfd, &servaddr);
 
-    if ((epollfd = epoll_create(MAX_EVENTS)) < 0) // create epollfd
+    if ((epollfd = epoll_create(MAX_EVENTS)) < 0) // create epollfd listen for client
     {
         perror("create epollfd fail");
+        exit(EXIT_FAILURE);
+    }
+
+    if ((epollfd_ws = epoll_create(MAX_EVENTS)) < 0) // create epollfd listen for webserver
+    {
+        perror("create epollfd webserver fail");
         exit(EXIT_FAILURE);
     }
 
@@ -102,7 +113,7 @@ int main(int argc, char *argv[])
     }
 
     int ret;
-    int hbuff[HEADER_SIZE];
+    char hbuff[HEADER_SIZE];
     while (1)
     { // start polling, waiting for event
         nfds = epoll_wait(epollfd, event_list, MAX_EVENTS, POLL_TIMEOUT);
@@ -119,7 +130,7 @@ int main(int argc, char *argv[])
             {
                 if (event_list[i].data.fd == sockfd) // client init connection
                 {
-                    conn_sock = accept(sockfd, NULL, NULL); // accept
+                    conn_sock = accept(sockfd, (struct sockaddr *)&clientaddr, &addrlen); // accept
                     if (conn_sock < 0)
                     {
                         perror("accept socket fail");
@@ -137,16 +148,62 @@ int main(int argc, char *argv[])
                 }
                 else // new readable request header
                 {
-                    int sock = event_list[i].data.fd;
-                    ret = get_req_headers(hbuff, sock);
-                    if (ret > 0) // receive all header success
+                    int clisock = event_list[i].data.fd;
+                    ret = get_req_headers(hbuff, clisock);
+
+                    // connect to webserver
+                    int idx = get_lowest_index(count_req_webserver);
+                    int wssock = socket(AF_INET, SOCK_STREAM, 0);
+                    sockaddr_in wsaddr;
+                    inet_pton(AF_INET, wsinfo_list[idx].ip, &wsaddr.sin_addr);
+                    wsaddr.sin_family = AF_INET;
+                    wsaddr.sin_port = htons(wsinfo_list[idx].port);
+                    connect(wssock, (struct sockaddr *)&wsaddr, INET_ADDRSTRLEN);
+
+                    if (send(wssock, hbuff, strlen(hbuff), 0) > 0)
+                        count_req_webserver[idx]++; // increase num req
+
+                    // receive header from webserver
+                    memset(hbuff, '\0', sizeof(hbuff));
+                    get_req_headers(hbuff, wssock);
+                    printf("%s", hbuff);
+
+                    // get length of file
+                    char value[100];
+                    ret = search_header_value(value, "Content-Length", hbuff);
+
+                    // send header to client
+                    send(clisock, hbuff, strlen(hbuff), 0);
+
+                    // receive data from webserver then return to client
+                    if (ret == 0)   // have content length
                     {
-                        printf("%s\n", hbuff);
+                        // get body data
+                        long content_len = atoi(value);
+                        printf("%ld  ", content_len);
+                        long sum = 0;
+                        while (1)
+                        {
+                            if (sum == content_len)
+                            {
+                                printf("data send ok\n");
+                                break;
+                            }
+                            if ((ret = recv(wssock, buffer, BUFFSIZE, 0)) > 0)
+                            {
+                                printf("%s", buffer);
+                                send(clisock, buffer, strlen(buffer), 0);
+                                sum += ret;
+                            }
+                            else
+                                break;
+                        }
                     }
 
-                    // remove sock from list epoll
-                    epoll_ctl(epollfd, EPOLL_CTL_DEL, sock, &ev);
-                    close(sock);
+                    // close epoll socket
+                    epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
+                    close(clisock);
+                    close(wssock);
                 }
             }
         }
@@ -210,4 +267,18 @@ static int get_lowest_index(int *arr)
         if (arr[i] < arr[lowest_idx])
             lowest_idx = i;
     return lowest_idx;
+}
+
+static int search_header_value(char *value, char *header, char *hbuff)
+{
+    char *pos = strstr(hbuff, header);
+
+    // header not exist
+    if (pos == NULL)
+        return -1;
+
+    pos += strlen(header) + 2; // strlen(": ") == 2
+    sscanf(pos, "%99[^\r]", value);
+
+    return 0;
 }
