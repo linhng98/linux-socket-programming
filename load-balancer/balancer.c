@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #define BUFFSIZE 512
@@ -136,6 +137,15 @@ int main(int argc, char *argv[])
                         perror("accept socket fail");
                         continue;
                     }
+                    // print log time, ip and port
+                    time_t rawtime;
+                    struct tm *timeinfo;
+
+                    time(&rawtime);
+                    timeinfo = localtime(&rawtime);
+                    inet_ntop(AF_INET, &clientaddr.sin_addr, buffer, INET_ADDRSTRLEN); // get ipaddr
+                    printf("%02d:%02d:%02d %s %d\n", timeinfo->tm_hour, timeinfo->tm_min,
+                           timeinfo->tm_sec, buffer, ntohs(clientaddr.sin_port));
 
                     ev.events = EPOLLIN;
                     ev.data.fd = conn_sock; // conn sock to list epoll
