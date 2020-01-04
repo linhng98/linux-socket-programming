@@ -160,13 +160,13 @@ int main(int argc, char *argv[])
                     wsaddr.sin_port = htons(wsinfo_list[idx].port);
                     connect(wssock, (struct sockaddr *)&wsaddr, INET_ADDRSTRLEN);
 
+                    // send client req header to webserver
                     if (send(wssock, hbuff, strlen(hbuff), 0) > 0)
                         count_req_webserver[idx]++; // increase num req
 
                     // receive header from webserver
                     memset(hbuff, '\0', sizeof(hbuff));
                     get_req_headers(hbuff, wssock);
-                    printf("%s", hbuff);
 
                     // get length of file
                     char value[100];
@@ -176,28 +176,24 @@ int main(int argc, char *argv[])
                     send(clisock, hbuff, strlen(hbuff), 0);
 
                     // receive data from webserver then return to client
-                    if (ret == 0)   // have content length
+
+                    // get body data
+                    long content_len = atoi(value);
+                    long sum = 0;
+                    while (1)
                     {
-                        // get body data
-                        long content_len = atoi(value);
-                        printf("%ld  ", content_len);
-                        long sum = 0;
-                        while (1)
+                        memset(buffer, '\0', BUFFSIZE);
+
+                        if (sum == content_len)
+                            break;
+
+                        if ((ret = recv(wssock, buffer, BUFFSIZE - 1, 0)) > 0)
                         {
-                            if (sum == content_len)
-                            {
-                                printf("data send ok\n");
-                                break;
-                            }
-                            if ((ret = recv(wssock, buffer, BUFFSIZE, 0)) > 0)
-                            {
-                                printf("%s", buffer);
-                                send(clisock, buffer, strlen(buffer), 0);
-                                sum += ret;
-                            }
-                            else
-                                break;
+                            send(clisock, buffer, ret, 0);
+                            sum += ret;
                         }
+                        else
+                            break;
                     }
 
                     // close epoll socket

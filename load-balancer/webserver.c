@@ -286,9 +286,10 @@ unsigned long get_file_size(char *path)
 int serve_client_request(int sockfd)
 {
     char buffer[BUFFSIZE];
+    memset(buffer, '\0', BUFFSIZE);
     char header[HEADER_SIZE];
     int ret;
-    memset(header, '\0', sizeof(header));
+    memset(header, '\0', HEADER_SIZE);
     char req_file[PATH_MAX];
 
     ret = get_req_headers(header, sockfd); // get request header
@@ -312,11 +313,13 @@ int serve_client_request(int sockfd)
 
         sprintf(buffer, "Content-Length: %lu\r\n\r\n", get_file_size(path_file));
         send(sockfd, buffer, strlen(buffer), 0);
-        while ((ret = fread(buffer, 1, BUFFSIZE, f)) > 0)
+
+        memset(buffer, '\0', BUFFSIZE);
+        while ((ret = fread(buffer, 1, BUFFSIZE - 1, f)) > 0)
         {
-            buffer[ret] = '\0';
             if (send(sockfd, buffer, ret, 0) <= 0)
                 break;
+            memset(buffer, '\0', BUFFSIZE);
         }
         fclose(f);
     }
