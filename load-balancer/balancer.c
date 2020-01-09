@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,9 +49,9 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
 
 static int listen_port = 8000; // default load balancer port
 
-static webserver_info wsinfo_list[3] = {
+static webserver_info wsinfo_list[3] = {    // list webserver port and ip
     {"127.0.0.1", 11111}, {"127.0.0.1", 22222}, {"127.0.0.1", 33333}};
-static int count_req_webserver[3] = {0};
+static int count_req_webserver[3] = {0};    // use to count request to each webserver
 
 int main(int argc, char *argv[])
 {
@@ -162,48 +163,62 @@ int main(int argc, char *argv[])
                     ret = get_req_headers(hbuff, clisock);
 
                     // connect to webserver
-                    int idx = get_lowest_index(count_req_webserver);
+                    int idx;
+                    if ((idx = get_lowest_index(count_req_webserver)) < 0)
+                    { // no webserver is up
+                        printf("no webserver is running\n");
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
+                        close(clisock);
+                    }
+
                     int wssock = socket(AF_INET, SOCK_STREAM, 0);
                     sockaddr_in wsaddr;
                     inet_pton(AF_INET, wsinfo_list[idx].ip, &wsaddr.sin_addr);
                     wsaddr.sin_family = AF_INET;
                     wsaddr.sin_port = htons(wsinfo_list[idx].port);
-                    connect(wssock, (struct sockaddr *)&wsaddr, INET_ADDRSTRLEN);
 
-                    // send client req header to webserver
-                    if (send(wssock, hbuff, strlen(hbuff), 0) > 0)
-                        count_req_webserver[idx]++; // increase num req
-
-                    // receive header from webserver
-                    memset(hbuff, '\0', sizeof(hbuff));
-                    get_req_headers(hbuff, wssock);
-
-                    // get length of file
-                    char value[100];
-                    ret = search_header_value(value, "Content-Length", hbuff);
-
-                    // send header to client
-                    send(clisock, hbuff, strlen(hbuff), 0);
-
-                    // receive data from webserver then return to client
-
-                    // get body data
-                    long content_len = atoi(value);
-                    long sum = 0;
-                    while (1)
+                    if (connect(wssock, (struct sockaddr *)&wsaddr, INET_ADDRSTRLEN) < 0)
+                    { // connect to webserver fail, server down, remove from list webserver
+                        printf("webser %c downed\n", 'A' + idx);
+                        count_req_webserver[idx] = -1;
+                    }
+                    else
                     {
-                        memset(buffer, '\0', BUFFSIZE);
+                        // send client req header to webserver
+                        if (send(wssock, hbuff, strlen(hbuff), 0) > 0)
+                            count_req_webserver[idx]++; // increase num req
 
-                        if (sum == content_len)
-                            break;
+                        // receive header from webserver
+                        memset(hbuff, '\0', sizeof(hbuff));
+                        get_req_headers(hbuff, wssock);
 
-                        if ((ret = recv(wssock, buffer, BUFFSIZE - 1, 0)) > 0)
+                        // get length of file
+                        char value[100];
+                        ret = search_header_value(value, "Content-Length", hbuff);
+
+                        // send header to client
+                        send(clisock, hbuff, strlen(hbuff), 0);
+
+                        // receive data from webserver then return to client
+
+                        // get body data
+                        long content_len = atoi(value);
+                        long sum = 0;
+                        while (1)
                         {
-                            send(clisock, buffer, ret, 0);
-                            sum += ret;
+                            memset(buffer, '\0', BUFFSIZE);
+
+                            if (sum == content_len)
+                                break;
+
+                            if ((ret = recv(wssock, buffer, BUFFSIZE - 1, 0)) > 0)
+                            {
+                                send(clisock, buffer, ret, 0);
+                                sum += ret;
+                            }
+                            else
+                                break;
                         }
-                        else
-                            break;
                     }
 
                     // close epoll socket
@@ -268,10 +283,14 @@ int get_req_headers(char *hbuff, int sockfd)
 
 static int get_lowest_index(int *arr)
 {
-    int lowest_idx = 0;
-    for (int i = 1; i < NUM_WEBSERVER; i++)
-        if (arr[i] < arr[lowest_idx])
+    int max = INT_MAX;
+    int lowest_idx = -1;
+    for (int i = 0; i < NUM_WEBSERVER; i++)
+        if (arr[i] < max && arr[i] >= 0)
+        {
             lowest_idx = i;
+            max = arr[i];
+        }
     return lowest_idx;
 }
 
