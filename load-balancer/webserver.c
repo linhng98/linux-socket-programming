@@ -22,7 +22,7 @@
 #define USAGE "Usage: webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"
 #define VERSION                                                                                    \
     "webserver v1.0.0\n"                                                                           \
-    "Written by Linh, Khue\n"
+    "Written by Linh, Khue, Tin\n"
 #define HELP                                                                                       \
     "webserver [-p <PORT>] [-d <RESOURCE_DIR>]\n"                                                  \
     "Serve GET request from client\n"                                                              \

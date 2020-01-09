@@ -19,7 +19,7 @@
 #define USAGE "Usage: balancer [-p <PORT>]\n"
 #define VERSION                                                                                    \
     "balancer v1.0.0\n"                                                                            \
-    "Written by Linh, Khue\n"
+    "Written by Linh, Khue, Tin\n"
 #define HELP                                                                                       \
     "balancer [-p <PORT>]\n"                                                                       \
     "Load balancer forward request to webserver\n"                                                 \
@@ -38,6 +38,7 @@ typedef struct webserver_info
 } webserver_info;
 
 static void init_server_socket(int *sockfd, sockaddr_in *servaddr);
+static void init_webserver_addrstruct();
 static int get_req_headers(char *hbuff, int sockfd);
 static int get_lowest_index(int *arr);
 static int search_header_value(char *value, char *header, char *hbuff);
@@ -49,9 +50,12 @@ static struct option long_options[] = {{"port", required_argument, 0, 'p'},
 
 static int listen_port = 8000; // default load balancer port
 
-static webserver_info wsinfo_list[3] = {    // list webserver port and ip
-    {"127.0.0.1", 11111}, {"127.0.0.1", 22222}, {"127.0.0.1", 33333}};
-static int count_req_webserver[3] = {0};    // use to count request to each webserver
+static webserver_info wsinfo_list[3] = { // list webserver port and ip
+    {"127.0.0.1", 11111},
+    {"127.0.0.1", 22222},
+    {"127.0.0.1", 33333}};
+static int count_req_webserver[3] = {0}; // use to count request to each webserver
+static sockaddr_in wsaddr[3];            // struct addr_in for each webserver
 
 int main(int argc, char *argv[])
 {
@@ -92,7 +96,9 @@ int main(int argc, char *argv[])
     sockaddr_in clientaddr;
     socklen_t addrlen = sizeof(clientaddr);
     struct epoll_event ev, event_list[MAX_EVENTS];
+
     init_server_socket(&sockfd, &servaddr);
+    init_webserver_addrstruct();
 
     if ((epollfd = epoll_create(MAX_EVENTS)) < 0) // create epollfd listen for client
     {
@@ -172,12 +178,8 @@ int main(int argc, char *argv[])
                     }
 
                     int wssock = socket(AF_INET, SOCK_STREAM, 0);
-                    sockaddr_in wsaddr;
-                    inet_pton(AF_INET, wsinfo_list[idx].ip, &wsaddr.sin_addr);
-                    wsaddr.sin_family = AF_INET;
-                    wsaddr.sin_port = htons(wsinfo_list[idx].port);
 
-                    if (connect(wssock, (struct sockaddr *)&wsaddr, INET_ADDRSTRLEN) < 0)
+                    if (connect(wssock, (struct sockaddr *)&wsaddr[idx], INET_ADDRSTRLEN) < 0)
                     { // connect to webserver fail, server down, remove from list webserver
                         printf("webser %c downed\n", 'A' + idx);
                         count_req_webserver[idx] = -1;
@@ -306,4 +308,14 @@ static int search_header_value(char *value, char *header, char *hbuff)
     sscanf(pos, "%99[^\r]", value);
 
     return 0;
+}
+
+void init_webserver_addrstruct()
+{
+    for (int i = 0; i < NUM_WEBSERVER; i++)
+    {
+        inet_pton(AF_INET, wsinfo_list[i].ip, &wsaddr[i].sin_addr);
+        wsaddr[i].sin_family = AF_INET;
+        wsaddr[i].sin_port = htons(wsinfo_list[i].port);
+    }
 }
