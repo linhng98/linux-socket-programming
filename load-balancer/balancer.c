@@ -42,6 +42,7 @@ static void init_webserver_addrstruct();
 static int get_req_headers(char *hbuff, int sockfd);
 static int get_lowest_index(int *arr);
 static int search_header_value(char *value, char *header, char *hbuff);
+static int get_webserverid_cookie(char *hbuff);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"help", no_argument, 0, 'h'},
@@ -159,7 +160,7 @@ int main(int argc, char *argv[])
                             timeinfo->tm_min, timeinfo->tm_sec, ip, ntohs(clientaddr.sin_port));
                     printf("%s", connection_info);
 
-                    fputs(connection_info, filelog);    // write log to file
+                    fputs(connection_info, filelog); // write log to file
                     fflush(filelog);
 
                     ev.events = EPOLLIN;
@@ -175,14 +176,25 @@ int main(int argc, char *argv[])
                 {
                     int clisock = event_list[i].data.fd;
                     ret = get_req_headers(hbuff, clisock);
+                    int idx;
+
+                    int checkcookie = 0;
+                    if ((ret = get_webserverid_cookie(hbuff)) >= 0)
+                    {
+                        idx = ret - 'A';
+                        checkcookie = 1;
+                    }
 
                     // connect to webserver
-                    int idx;
-                    if ((idx = get_lowest_index(count_req_webserver)) < 0)
-                    { // no webserver is up
-                        printf("no webserver is running\n");
-                        epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
-                        close(clisock);
+                    else
+                    {
+                        if ((idx = get_lowest_index(count_req_webserver)) < 0)
+                        { // no webserver is up
+                            printf("no webserver is running\n");
+                            epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
+                            close(clisock);
+                            continue;
+                        }
                     }
 
                     int wssock = socket(AF_INET, SOCK_STREAM, 0);
@@ -192,7 +204,7 @@ int main(int argc, char *argv[])
                         printf("webser %c downed\n", 'A' + idx);
                         count_req_webserver[idx] = -1;
                     }
-                    else
+                    else // connect to webserver success
                     {
                         // send client req header to webserver
                         if (send(wssock, hbuff, strlen(hbuff), 0) > 0)
@@ -200,17 +212,34 @@ int main(int argc, char *argv[])
 
                         // receive header from webserver
                         memset(hbuff, '\0', sizeof(hbuff));
-                        get_req_headers(hbuff, wssock);
+                        if (get_req_headers(hbuff, wssock) <= 0)
+                        {
+                            epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
+                            close(clisock);
+                            close(wssock);
+                            continue;
+                        }
 
                         // get length of file
                         char value[100];
                         ret = search_header_value(value, "Content-Length", hbuff);
 
                         // send header to client
-                        send(clisock, hbuff, strlen(hbuff), 0);
+
+                        if (checkcookie == 0) // set webserver id cookie
+                        {
+                            char cookie_header[HEADER_SIZE + 100];
+                            hbuff[strlen(hbuff) - 2] = '\0';
+                            sprintf(cookie_header, "%sSet-Cookie: SERVERID=%c\r\n\r\n", hbuff,
+                                    'A' + idx);
+                            send(clisock, cookie_header, strlen(cookie_header), 0);
+                        }
+                        else
+                        { // client already have cookie
+                            send(clisock, hbuff, strlen(hbuff), 0);
+                        }
 
                         // receive data from webserver then return to client
-
                         // get body data
                         long content_len = atoi(value);
                         long sum = 0;
@@ -288,6 +317,7 @@ int get_req_headers(char *hbuff, int sockfd)
         if (ptr[-1] == '\n' && ptr[-2] == '\r' && ptr[-3] == '\n' && ptr[-4] == '\r')
             break;
     }
+
     return ret; // ret <= 0 (error or connection closed)
 }
 
@@ -326,4 +356,18 @@ void init_webserver_addrstruct()
         wsaddr[i].sin_family = AF_INET;
         wsaddr[i].sin_port = htons(wsinfo_list[i].port);
     }
+}
+
+int get_webserverid_cookie(char *hbuff)
+{
+    char value[300];
+    if (search_header_value(value, "Cookie", hbuff) < 0)
+        return -1;
+
+    char *wsid_pos = strstr(value, "SERVERID=");
+    if (wsid_pos == NULL)
+        return -1; // cookie not found
+
+    char c = wsid_pos[strlen("SERVERID=")];
+    return c;
 }

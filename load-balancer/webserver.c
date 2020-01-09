@@ -291,12 +291,19 @@ int serve_client_request(int sockfd)
     int ret;
     memset(header, '\0', HEADER_SIZE);
     char req_file[PATH_MAX];
+    char method[10];
 
     ret = get_req_headers(header, sockfd); // get request header
     if (ret <= 0)                          // error when reading header
         return ret;
 
-    sscanf(header, "%*s %s %*s", req_file);
+    sscanf(header, "%s %s %*s", method, req_file);
+    if (strcmp(method, "GET") != 0)
+    {
+        printf("%s\n",method);
+        close(sockfd);
+        return -1;
+    }
     printf("GET %s (%d)\n", req_file, sockfd);
     if (strcmp(req_file, "/") == 0)
         strcpy(req_file, "/index.html");
