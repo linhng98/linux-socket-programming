@@ -1,1 +1,2 @@
-*.log
+load-balancer/*.log
+load-balancer/bin/*
