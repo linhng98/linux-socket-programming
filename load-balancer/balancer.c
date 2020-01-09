@@ -122,6 +122,8 @@ int main(int argc, char *argv[])
 
     int ret;
     char hbuff[HEADER_SIZE];
+    FILE *filelog = fopen("client_request.log", "a+");
+
     while (1)
     { // start polling, waiting for event
         nfds = epoll_wait(epollfd, event_list, MAX_EVENTS, POLL_TIMEOUT);
@@ -147,12 +149,18 @@ int main(int argc, char *argv[])
                     // print log time, ip and port
                     time_t rawtime;
                     struct tm *timeinfo;
+                    char connection_info[50];
+                    char ip[15];
 
                     time(&rawtime);
                     timeinfo = localtime(&rawtime);
-                    inet_ntop(AF_INET, &clientaddr.sin_addr, buffer, INET_ADDRSTRLEN); // get ipaddr
-                    printf("%02d:%02d:%02d %s %d\n", timeinfo->tm_hour, timeinfo->tm_min,
-                           timeinfo->tm_sec, buffer, ntohs(clientaddr.sin_port));
+                    inet_ntop(AF_INET, &clientaddr.sin_addr, ip, INET_ADDRSTRLEN); // get ipaddr
+                    sprintf(connection_info, "%02d:%02d:%02d %s %d\n", timeinfo->tm_hour,
+                            timeinfo->tm_min, timeinfo->tm_sec, ip, ntohs(clientaddr.sin_port));
+                    printf("%s", connection_info);
+
+                    fputs(connection_info, filelog);    // write log to file
+                    fflush(filelog);
 
                     ev.events = EPOLLIN;
                     ev.data.fd = conn_sock; // conn sock to list epoll
