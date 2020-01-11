@@ -43,6 +43,7 @@ static int get_req_headers(char *hbuff, int sockfd);
 static int get_lowest_index(int *arr);
 static int search_header_value(char *value, char *header, char *hbuff);
 static int get_webserverid_cookie(char *hbuff);
+static int check_valid_header(char *hbuff);
 
 static struct option long_options[] = {{"port", required_argument, 0, 'p'},
                                        {"help", no_argument, 0, 'h'},
@@ -176,6 +177,12 @@ int main(int argc, char *argv[])
                 {
                     int clisock = event_list[i].data.fd;
                     ret = get_req_headers(hbuff, clisock);
+                    if (check_valid_header(hbuff) < 0) // invalid header, close connection
+                    {
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, clisock, &ev);
+                        close(clisock);
+                        continue;
+                    }
                     int idx;
 
                     int checkcookie = 0;
@@ -370,4 +377,13 @@ int get_webserverid_cookie(char *hbuff)
 
     char c = wsid_pos[strlen("SERVERID=")];
     return c;
+}
+
+int check_valid_header(char *hbuff)
+{
+    char method[10];
+    sscanf(hbuff, "%s %*s", method);
+    if (strcmp(method, "GET") != 0) // invavlid request method
+        return -1;
+    return 0;
 }
